@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -76,7 +79,6 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 		case commitSha == "" && opts.RefIsBranch:
 			branch = ref
 		case commitSha == "" && !opts.RefIsBranch:
-			fmt.Println("TAGGING " + ref + " commit: " + commitSha)
 			tag = ref
 		}
 	}
@@ -94,9 +96,9 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 	}, nil
 }
 
-// DownloadFile downloads a file specified by the VCS locator and writes it
+// CopyFile downloads a file specified by the VCS locator and copies it
 // to an io.Writer.
-func DownloadFile[T ~string](locator T, w io.Writer, funcs ...fnOpt) error {
+func CopyFile[T ~string](locator T, w io.Writer, funcs ...fnOpt) error {
 	opts := defaultOptions
 	for _, fn := range funcs {
 		if err := fn(&opts); err != nil {
@@ -106,7 +108,7 @@ func DownloadFile[T ~string](locator T, w io.Writer, funcs ...fnOpt) error {
 
 	l := Locator(locator)
 	components, err := l.Parse(funcs...)
-	fmt.Printf("%+v", components)
+
 	if err != nil {
 		return fmt.Errorf("parsing locator: %w", err)
 	}
@@ -125,6 +127,72 @@ func DownloadFile[T ~string](locator T, w io.Writer, funcs ...fnOpt) error {
 	}
 	if _, err := io.Copy(w, f); err != nil {
 		return fmt.Errorf("copying data stream: %w", err)
+	}
+	return nil
+}
+
+// Download copies data from the git repository to the specified directory
+func Download[T ~string](locator T, localDir string, funcs ...fnOpt) error {
+	opts := defaultOptions
+	for _, fn := range funcs {
+		if err := fn(&opts); err != nil {
+			return err
+		}
+	}
+
+	l := Locator(locator)
+	components, err := l.Parse(funcs...)
+
+	if err != nil {
+		return fmt.Errorf("parsing locator: %w", err)
+	}
+	if components.SubPath == "" {
+		return errors.New("locator has no subpath defined")
+	}
+
+	fsys, err := CloneRepository(locator, funcs...)
+	if err != nil {
+		return fmt.Errorf("cloning repository: %w", err)
+	}
+
+	// Walk the filesystem to fetch all we need
+	if err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		if !strings.HasPrefix(path, strings.TrimPrefix(components.SubPath, "/")) {
+			return nil
+		}
+
+		// We know all paths are files here, so we create the dir and copy
+		src, err := fsys.Open(path)
+		if err != nil {
+			return fmt.Errorf("opening file from source: %w", err)
+		}
+		defer src.Close()
+
+		destDir := filepath.Join(localDir, filepath.Dir(path))
+		if err := os.MkdirAll(destDir, os.FileMode(0o755)); err != nil {
+			return fmt.Errorf("creating destination dir: %w", err)
+		}
+
+		dst, err := os.Create(filepath.Join(localDir, path))
+		if err != nil {
+			return fmt.Errorf("opening destination file: %w", err)
+		}
+		defer dst.Close()
+
+		if _, err := io.Copy(dst, src); err != nil {
+			return fmt.Errorf("copying data stream: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 	return nil
 }
@@ -162,8 +230,6 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 	} else {
 		fs = osfs.New(opts.ClonePath)
 	}
-
-	fmt.Println("Cloning " + components.RepoURL())
 
 	// Make a shallow clone of the repo to memory
 	repo, err := git.Clone(memory.NewStorage(), fs, &git.CloneOptions{
