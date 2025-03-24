@@ -24,7 +24,8 @@ func TestParseLocator(t *testing.T) {
 		},
 		{
 			"commit", Locator("http://github.com/example/test@25c779ba165d1f4fac6fc2ce938bf40c1f8ab1a6"),
-			&Components{Transport: "http", Hostname: "github.com", RepoPath: "/example/test",
+			&Components{
+				Transport: "http", Hostname: "github.com", RepoPath: "/example/test",
 				Commit: "25c779ba165d1f4fac6fc2ce938bf40c1f8ab1a6", RefString: "25c779ba165d1f4fac6fc2ce938bf40c1f8ab1a6",
 			}, nil, false,
 		},
@@ -34,7 +35,9 @@ func TestParseLocator(t *testing.T) {
 				Tool: "git", Transport: "http", Hostname: "github.com",
 				RepoPath: "/example/test", RefString: "abcd", SubPath: ".github/dependabot.yaml",
 				Tag: "", Branch: "abcd", Commit: "",
-			}, []fnOpt{WithRefAsBranch(true)}, false,
+			},
+			[]fnOpt{WithRefAsBranch(true)},
+			false,
 		},
 		{
 			"full-tag", Locator("git+http://github.com/example/test@abcd#%2egithub/dependabot.yaml"),
@@ -42,7 +45,9 @@ func TestParseLocator(t *testing.T) {
 				Tool: "git", Transport: "http", Hostname: "github.com",
 				RepoPath: "/example/test", RefString: "abcd", SubPath: ".github/dependabot.yaml",
 				Tag: "abcd", Branch: "", Commit: "",
-			}, []fnOpt{WithRefAsBranch(false)}, false,
+			},
+			[]fnOpt{WithRefAsBranch(false)},
+			false,
 		},
 		{
 			"unescaped-fragment", Locator("git+http://github.com/example/test@abcd#.github/dependabot.yaml"),

@@ -29,9 +29,7 @@ const (
 	sha1ShortPattern = "^[a-f0-9]{7}$"
 )
 
-var (
-	sha1Regex, sha1ShortRegex *regexp.Regexp
-)
+var sha1Regex, sha1ShortRegex *regexp.Regexp
 
 type Locator string
 
@@ -65,8 +63,8 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 			sha1ShortRegex = regexp.MustCompile(sha1ShortPattern)
 		}
 
-		// If the ref looks like a commit, we treat it as such. Other refernces
-		// can be addressed by specifying the full ref type.
+		// If the ref looks like a commit, we treat it as such. Other reference
+		// types can be addressed by specifying the full path string (ie refs/tags/XX).
 		if sha1Regex.MatchString(ref) || sha1ShortRegex.MatchString(ref) {
 			commitSha = ref
 		}
@@ -108,7 +106,6 @@ func CopyFile[T ~string](locator T, w io.Writer, funcs ...fnOpt) error {
 
 	l := Locator(locator)
 	components, err := l.Parse(funcs...)
-
 	if err != nil {
 		return fmt.Errorf("parsing locator: %w", err)
 	}
@@ -142,7 +139,6 @@ func Download[T ~string](locator T, localDir string, funcs ...fnOpt) error {
 
 	l := Locator(locator)
 	components, err := l.Parse(funcs...)
-
 	if err != nil {
 		return fmt.Errorf("parsing locator: %w", err)
 	}

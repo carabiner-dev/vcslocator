@@ -28,7 +28,6 @@ func (c *Components) RepoURL() string {
 	case "ssh":
 		return fmt.Sprintf("git@%s:%s", c.Hostname, strings.TrimPrefix(c.RepoPath, "/"))
 	default:
-		// return nil, errors.New("only HTTPS and SSH are supported as transports")
 		return ""
 	}
 }
