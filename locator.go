@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright 2025 Carabiner Systems, Inc
 // SPDX-License-Identifier: Apache-2.0
 
+// Package vcslocator offers functions and tools to parse SPDX VCS locator strings
+// and access data referenced by them.
 package vcslocator
 
 import (
@@ -31,9 +33,10 @@ const (
 
 var sha1Regex, sha1ShortRegex *regexp.Regexp
 
+// Locator is a type that wraps a VCS locator string to add functionality to it.
 type Locator string
 
-// Parses a VCS locator and returns its components
+// Parse a VCS locator and returns its components
 func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 	// For reference, the format is:
 	// <vcs_tool>+<transport>://<host_name>[/<path_to_repository>][@<revision_tag_or_branch>][#<sub_path>]
@@ -51,6 +54,7 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 
 	var commitSha, tag, branch string
 	path, ref, _ := strings.Cut(u.Path, "@")
+
 	tool, transport, si := strings.Cut(u.Scheme, "+")
 	if !si {
 		transport = tool
@@ -115,7 +119,7 @@ func CopyFile[T ~string](locator T, w io.Writer, funcs ...fnOpt) error {
 
 	fs, err := CloneRepository(locator, funcs...)
 	if err != nil {
-		return fmt.Errorf("")
+		return fmt.Errorf("cloning repository: %w", err)
 	}
 
 	f, err := fs.Open(components.SubPath)
@@ -138,6 +142,7 @@ func Download[T ~string](locator T, localDir string, funcs ...fnOpt) error {
 	}
 
 	l := Locator(locator)
+
 	components, err := l.Parse(funcs...)
 	if err != nil {
 		return fmt.Errorf("parsing locator: %w", err)
@@ -210,7 +215,7 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 	}
 
 	if components.Tool != "git" {
-		return nil, fmt.Errorf("only git locators are supported for cloning")
+		return nil, errors.New("only git locators are supported for cloning")
 	}
 
 	var reference plumbing.ReferenceName
@@ -244,7 +249,7 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 	if components.Commit != "" {
 		wt, err := repo.Worktree()
 		if err != nil {
-			return nil, fmt.Errorf("getting repository worktree")
+			return nil, fmt.Errorf("getting repository worktree: %w", err)
 		}
 
 		if err = wt.Checkout(&git.CheckoutOptions{

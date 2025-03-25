@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// Components captures the parsed pieces of a VCS locator.
 type Components struct {
 	Tool      string
 	Transport string

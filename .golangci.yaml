@@ -22,71 +22,84 @@ issues:
 linters:
   disable-all: true
   enable:
+    - asasalint
     - asciicheck
+    - bidichk
     - bodyclose
-    # - depguard
+    - canonicalheader
+    - containedctx
+    - contextcheck
+    - copyloopvar
+    - decorder
     - dogsled
     - dupl
     - durationcheck
     - errcheck
+    - errchkjson
+    - errname
+    - errorlint
+    - exhaustive
+    - exptostd
+    - fatcontext
+    - forcetypeassert
+    - ginkgolinter
+    - gocheckcompilerdirectives
+    - gochecksumtype
     - goconst
     - gocritic
     - gocyclo
+    # - godot
     - godox
     - goheader
     - gomoddirectives
     - gomodguard
     - goprintffuncname
     - gosec
-    # - gosimple
+    - gosmopolitan
     - govet
+    - grouper
+    - iface
     - importas
     - ineffassign
+    - intrange
+    - loggercheck
     - makezero
+    - mirror
     - misspell
+    - musttag
     - nakedret
+    - nilerr
+    - nilnesserr
+    # - nlreturn
+    - noctx
     - nolintlint
+    - nosprintfhostport
+    - perfsprint
     - prealloc
     - predeclared
     - promlinter
-    # - revive Disabled for now as we have lots of uppercase consts
+    - protogetter
+    - reassign
+    - recvcheck
+    - revive
+    - rowserrcheck
+    - sloglint
+    - spancheck
+    - sqlclosecheck
     - staticcheck
-    #- stylecheck
-    # - typecheck
+    - tagalign
+    - testableexamples
+    - testifylint
+    - tparallel
     - unconvert
     - unparam
     - unused
+    - usestdlibvars
+    - usetesting
+    - wastedassign
     - whitespace
-    # - cyclop
-    # - errorlint
-    # - exhaustive
-    # - exhaustivestruct
-    # - exportloopref
-    # - forbidigo
-    # - forcetypeassert
-    # - funlen
-    # - gci
-    # - gochecknoglobals
-    # - gochecknoinits
-    # - gocognit
-    # - godot
-    # - goerr113
-    # - gomnd
-    # - ifshort
-    # - lll
-    # - nestif
-    # - nilerr
-    # - nlreturn
-    # - noctx
-    # - paralleltest
-    # - scopelint
-    # - tagliatelle
-    # - testpackage
-    # - thelper
-    # - tparallel
-    # - wastedassign
-    # - wrapcheck
     # - wsl
+    - zerologlint
 formatters:
   # Enable specific formatter.
   # Default: [] (uses standard Go formatting)
@@ -103,7 +116,7 @@ linters-settings:
     sections:
       - standard
       - default
-      - prefix(github.com/carabiner-dev/vexflow)
+      - prefix(github.com/carabiner-dev/vcslocator)
 
   godox:
     keywords:
