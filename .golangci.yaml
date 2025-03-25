@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright 2025 Carabiner Systems, Inc
 # SPDX-License-Identifier: Apache-2.0
 ---
+version: "2"
 run:
   concurrency: 6
   timeout: 5m
@@ -28,19 +29,16 @@ linters:
     - dupl
     - durationcheck
     - errcheck
-    # - goconst Disabled temporarily as we need to const away all the relationships
+    - goconst
     - gocritic
-    # - gocyclo Disables until some functions are optimized
+    - gocyclo
     - godox
-    - gofmt
-    - gofumpt
     - goheader
-    - goimports
     - gomoddirectives
     - gomodguard
     - goprintffuncname
     - gosec
-    - gosimple
+    # - gosimple
     - govet
     - importas
     - ineffassign
@@ -54,7 +52,7 @@ linters:
     # - revive Disabled for now as we have lots of uppercase consts
     - staticcheck
     #- stylecheck
-    - typecheck
+    # - typecheck
     - unconvert
     - unparam
     - unused
@@ -67,7 +65,7 @@ linters:
     # - forbidigo
     # - forcetypeassert
     # - funlen
-    - gci
+    # - gci
     # - gochecknoglobals
     # - gochecknoinits
     # - gocognit
@@ -89,6 +87,15 @@ linters:
     # - wastedassign
     # - wrapcheck
     # - wsl
+formatters:
+  # Enable specific formatter.
+  # Default: [] (uses standard Go formatting)
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+    - golines
 linters-settings:
   gci:
     no-inline-comments: false
