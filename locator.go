@@ -170,18 +170,18 @@ func Download[T ~string](locator T, localDir string, funcs ...fnOpt) error {
 		if err != nil {
 			return fmt.Errorf("opening file from source: %w", err)
 		}
-		defer src.Close()
+		defer src.Close() //nolint:errcheck
 
 		destDir := filepath.Join(localDir, filepath.Dir(path))
 		if err := os.MkdirAll(destDir, os.FileMode(0o755)); err != nil {
 			return fmt.Errorf("creating destination dir: %w", err)
 		}
 
-		dst, err := os.Create(filepath.Join(localDir, path))
+		dst, err := os.Create(filepath.Join(localDir, path)) //nolint: gosec
 		if err != nil {
 			return fmt.Errorf("opening destination file: %w", err)
 		}
-		defer dst.Close()
+		defer dst.Close() //nolint:errcheck
 
 		if _, err := io.Copy(dst, src); err != nil {
 			return fmt.Errorf("copying data stream: %w", err)
