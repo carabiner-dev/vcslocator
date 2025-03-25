@@ -81,7 +81,7 @@ if err := vcslocator.Download(dirlocator, "mydir/"); err != nil {
 To install simply `go get` the module into your project:
 
 ```bash
-go get github.com/carabiner-dev/vcs-locator
+go get github.com/carabiner-dev/vcslocator
 ```
 
 ## Copyright

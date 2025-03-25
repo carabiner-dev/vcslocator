@@ -1,4 +1,4 @@
-module github.com/carabiner-dev/vcs-locator
+module github.com/carabiner-dev/vcslocator
 
 go 1.23.2
 
