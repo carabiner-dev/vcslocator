@@ -117,12 +117,12 @@ func CopyFile[T ~string](locator T, w io.Writer, funcs ...fnOpt) error {
 		return errors.New("locator has no subpath defined")
 	}
 
-	fs, err := CloneRepository(locator, funcs...)
+	fsobj, err := CloneRepository(locator, funcs...)
 	if err != nil {
 		return fmt.Errorf("cloning repository: %w", err)
 	}
 
-	f, err := fs.Open(components.SubPath)
+	f, err := fsobj.Open(components.SubPath)
 	if err != nil {
 		return fmt.Errorf("opening file: %w", err)
 	}
@@ -225,15 +225,15 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 		reference = plumbing.NewTagReferenceName(components.Tag)
 	}
 
-	var fs billy.Filesystem
+	var fsobj billy.Filesystem
 	if opts.ClonePath == "" {
-		fs = memfs.New()
+		fsobj = memfs.New()
 	} else {
-		fs = osfs.New(opts.ClonePath)
+		fsobj = osfs.New(opts.ClonePath)
 	}
 
 	// Make a shallow clone of the repo to memory
-	repo, err := git.Clone(memory.NewStorage(), fs, &git.CloneOptions{
+	repo, err := git.Clone(memory.NewStorage(), fsobj, &git.CloneOptions{
 		URL: components.RepoURL(),
 		// Progress:      os.Stdout,
 		ReferenceName: reference,
@@ -259,5 +259,5 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 		}
 	}
 
-	return iofs.New(fs), nil
+	return iofs.New(fsobj), nil
 }
