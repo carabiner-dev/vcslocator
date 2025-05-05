@@ -182,7 +182,7 @@ func Download[T ~string](locator T, localDir string, funcs ...fnOpt) error {
 			return fmt.Errorf("creating destination dir: %w", err)
 		}
 
-		dst, err := os.Create(filepath.Join(localDir, path)) //nolint: gosec
+		dst, err := os.Create(filepath.Join(localDir, path))
 		if err != nil {
 			return fmt.Errorf("opening destination file: %w", err)
 		}

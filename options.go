@@ -36,7 +36,7 @@ func WithRefAsBranch(sino bool) fnOpt { //nolint:revive
 }
 
 // WithClonePath specifies the directory to clone the repository. When
-func WithClonePath(path string) fnOpt { //nolint
+func WithClonePath(path string) fnOpt {
 	return func(o *options) error {
 		if o == nil {
 			return errors.New("options are nil")
