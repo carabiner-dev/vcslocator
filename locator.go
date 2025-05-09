@@ -6,6 +6,7 @@
 package vcslocator
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-billy/v5/helper/iofs"
@@ -24,6 +26,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/storage/memory"
+	"github.com/nozzle/throttler"
 )
 
 const (
@@ -96,6 +99,131 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 		Commit:    commitSha,
 		SubPath:   u.Fragment,
 	}, nil
+}
+
+//nolint:errname // This is not an Error type
+type ErrorList struct {
+	Errors []error
+}
+
+func (el *ErrorList) Error() string {
+	if err := errors.Join(el.Errors...); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+type copyPlan struct {
+	Locator    Locator
+	FS         fs.FS
+	Components *Components
+	Files      map[int]string
+}
+
+// GetGroup gets the data of several vcs locators in an efficient manner
+func GetGroup[T ~string](locators []T) ([][]byte, error) {
+	buffers := make([]io.Writer, len(locators))
+	for i := range locators {
+		var b bytes.Buffer
+		buffers[i] = &b
+	}
+
+	if err := CopyFileGroup(locators, buffers); err != nil {
+		return nil, err
+	}
+
+	ret := [][]byte{}
+	for i, w := range buffers {
+		if b, ok := w.(*bytes.Buffer); ok {
+			ret = append(ret, b.Bytes())
+		} else {
+			return nil, fmt.Errorf("lost buffer #%d", i)
+		}
+	}
+	return ret, nil
+}
+
+// CopyFileGroup copies a group of locators to the specified writers
+func CopyFileGroup[T ~string](locators []T, writers []io.Writer, funcs ...fnOpt) error {
+	if len(locators) != len(writers) {
+		return fmt.Errorf("number of writers does not match the number of VCS locators")
+	}
+
+	// First, create the clone plan
+	cloneList := map[string]*copyPlan{}
+	for i, l := range locators {
+		// Parse the locator
+		components, err := Locator(l).Parse()
+		if err != nil {
+			return fmt.Errorf("error parsing locator %d", i)
+		}
+
+		repostring := fmt.Sprintf("%s:%s:%s", components.RepoURL(), components.Branch, components.Tag)
+		if _, ok := cloneList[repostring]; !ok {
+			cloneList[repostring] = &copyPlan{
+				Locator:    Locator(l),
+				Components: components,
+				Files:      map[int]string{},
+			}
+		}
+		cloneList[repostring].Files[i] = components.SubPath
+	}
+
+	// Clone them repos
+	var mutex sync.Mutex
+	t := throttler.New(4, len(cloneList))
+	for repostring, copyplan := range cloneList {
+		go func() {
+			fsobj, err := CloneRepository(copyplan.Locator)
+			mutex.Lock()
+			cloneList[repostring].FS = fsobj
+			mutex.Unlock()
+			t.Done(err)
+		}()
+		t.Throttle()
+	}
+
+	// Now copy the files in parallel
+	errs := map[int]error{}
+	t2 := throttler.New(4, len(locators))
+	for _, copyplan := range cloneList {
+		for i, path := range copyplan.Files {
+			fmt.Printf("copying %d/%d: %s \n", i, len(locators), path)
+			go func() {
+				f, err := copyplan.FS.Open(path)
+				if err != nil {
+					errs[i] = fmt.Errorf("opening file %d: %w", i, err)
+					t2.Done(nil)
+					return
+				}
+				defer f.Close() //nolint:errcheck
+				if _, err := io.Copy(writers[i], f); err != nil {
+					errs[i] = fmt.Errorf("copying data stream %d: %w", i, err)
+					t2.Done(nil)
+					return
+				}
+				t2.Done(nil)
+			}()
+			t2.Throttle()
+		}
+	}
+
+	fmt.Printf("DONE copying  \n")
+
+	if len(errs) != 0 {
+		ret := []error{}
+		for i := range locators {
+			if err, ok := errs[i]; ok {
+				ret = append(ret, err)
+			} else {
+				ret = append(ret, nil)
+			}
+		}
+		return &ErrorList{
+			Errors: ret,
+		}
+	}
+	return nil
 }
 
 // CopyFile downloads a file specified by the VCS locator and copies it
