@@ -50,6 +50,10 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 		}
 	}
 
+	if l == "" {
+		return nil, errors.New("locator is an empty string")
+	}
+
 	u, err := url.Parse(string(l))
 	if err != nil {
 		return nil, err
