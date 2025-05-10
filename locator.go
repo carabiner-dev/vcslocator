@@ -192,7 +192,6 @@ func CopyFileGroup[T ~string](locators []T, writers []io.Writer, funcs ...fnOpt)
 	t2 := throttler.New(4, len(locators))
 	for _, copyplan := range cloneList {
 		for i, path := range copyplan.Files {
-			fmt.Printf("copying %d/%d: %s \n", i, len(locators), path)
 			go func() {
 				f, err := copyplan.FS.Open(path)
 				if err != nil {
@@ -211,8 +210,6 @@ func CopyFileGroup[T ~string](locators []T, writers []io.Writer, funcs ...fnOpt)
 			t2.Throttle()
 		}
 	}
-
-	fmt.Printf("DONE copying  \n")
 
 	if len(errs) != 0 {
 		ret := []error{}
