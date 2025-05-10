@@ -182,9 +182,13 @@ func CopyFileGroup[T ~string](locators []T, writers []io.Writer, funcs ...fnOpt)
 			mutex.Lock()
 			cloneList[repostring].FS = fsobj
 			mutex.Unlock()
-			t.Done(err)
+			t.Done(fmt.Errorf("reading %q: %w", copyplan.Locator, err))
 		}()
 		t.Throttle()
+	}
+
+	if err := t.Err(); err != nil {
+		return fmt.Errorf("error cloning repositories: %w", err)
 	}
 
 	// Now copy the files in parallel
