@@ -182,7 +182,10 @@ func CopyFileGroup[T ~string](locators []T, writers []io.Writer, funcs ...fnOpt)
 			mutex.Lock()
 			cloneList[repostring].FS = fsobj
 			mutex.Unlock()
-			t.Done(fmt.Errorf("reading %q: %w", copyplan.Locator, err))
+			if err != nil {
+				err = fmt.Errorf("reading %q: %w", copyplan.Locator, err)
+			}
+			t.Done(err)
 		}()
 		t.Throttle()
 	}
