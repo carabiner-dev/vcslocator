@@ -65,6 +65,9 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 	tool, transport, si := strings.Cut(u.Scheme, "+")
 	if !si {
 		transport = tool
+		if transport != "https" && transport != "ssh" {
+			return nil, fmt.Errorf("only locators with a https or ssh transport are supported")
+		}
 		tool = ""
 	}
 
