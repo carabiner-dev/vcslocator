@@ -205,7 +205,7 @@ func CopyFileGroup[T ~string](locators []T, writers []io.Writer, funcs ...fnOpt)
 			go func() {
 				f, err := copyplan.FS.Open(path)
 				if err != nil {
-					errs[i] = fmt.Errorf("opening file %d: %w", i, err)
+					errs[i] = fmt.Errorf("opening path %d (%q): %w", i, path, err)
 					t2.Done(nil)
 					return
 				}
