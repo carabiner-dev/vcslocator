@@ -165,7 +165,7 @@ func CopyFileGroup[T ~string](locators []T, writers []io.Writer, funcs ...fnOpt)
 			return fmt.Errorf("error parsing locator %d", i)
 		}
 
-		repostring := fmt.Sprintf("%s:%s:%s", components.RepoURL(), components.Branch, components.Tag)
+		repostring := fmt.Sprintf("%s:%s", components.RepoURL(), components.RefString)
 		if _, ok := cloneList[repostring]; !ok {
 			cloneList[repostring] = &copyPlan{
 				Locator:    Locator(l),
