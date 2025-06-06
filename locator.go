@@ -71,6 +71,7 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 		tool = ""
 	}
 
+	// TODO(puerco): Ensure this follows man gitrevisions > SPECIFYING REVISIONS
 	if ref != "" {
 		if sha1Regex == nil || sha1ShortRegex == nil {
 			sha1Regex = regexp.MustCompile(sha1Pattern)

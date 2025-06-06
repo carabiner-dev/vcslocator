@@ -21,13 +21,13 @@ func TestParseLocator(t *testing.T) {
 		mustErr bool
 	}{
 		{
-			"simple", Locator("http://github.com/example/test"),
-			&Components{Transport: "http", Hostname: "github.com", RepoPath: "/example/test"}, nil, false,
+			"simple", Locator("https://github.com/example/test"),
+			&Components{Transport: "https", Hostname: "github.com", RepoPath: "/example/test"}, nil, false,
 		},
 		{
-			"commit", Locator("http://github.com/example/test@25c779ba165d1f4fac6fc2ce938bf40c1f8ab1a6"),
+			"commit", Locator("https://github.com/example/test@25c779ba165d1f4fac6fc2ce938bf40c1f8ab1a6"),
 			&Components{
-				Transport: "http", Hostname: "github.com", RepoPath: "/example/test",
+				Transport: "https", Hostname: "github.com", RepoPath: "/example/test",
 				Commit: "25c779ba165d1f4fac6fc2ce938bf40c1f8ab1a6", RefString: "25c779ba165d1f4fac6fc2ce938bf40c1f8ab1a6",
 			}, nil, false,
 		},
@@ -103,7 +103,7 @@ func TestGetGroup(t *testing.T) {
 			},
 			[]string{
 				"58c76f62c2d403aa2d946f53b381f4948f12a6814482d50fb4fd3d87f45e38d3",
-				"58c76f62c2d403aa2d946f53b381f4948f12a6814482d50fb4fd3d87f45e38d3",
+				"20e3b6fc9aa329d3860391b5addb836902d55599fd2f97a7a49fe6a9325f18c1",
 			},
 			false,
 		},
@@ -117,7 +117,7 @@ func TestGetGroup(t *testing.T) {
 			},
 			[]string{
 				"58c76f62c2d403aa2d946f53b381f4948f12a6814482d50fb4fd3d87f45e38d3",
-				"58c76f62c2d403aa2d946f53b381f4948f12a6814482d50fb4fd3d87f45e38d3",
+				"20e3b6fc9aa329d3860391b5addb836902d55599fd2f97a7a49fe6a9325f18c1",
 				"abf988eca60b353c1a1a030219466acc8d355c35a1e40c508e392dd3496be525",
 				"e8d84a48c5240adeb41ba5d66fce91cc6df2ef87031debacdd8ab56f40c2227b",
 			},
@@ -135,11 +135,11 @@ func TestGetGroup(t *testing.T) {
 			},
 			[]string{
 				"58c76f62c2d403aa2d946f53b381f4948f12a6814482d50fb4fd3d87f45e38d3",
-				"58c76f62c2d403aa2d946f53b381f4948f12a6814482d50fb4fd3d87f45e38d3",
+				"20e3b6fc9aa329d3860391b5addb836902d55599fd2f97a7a49fe6a9325f18c1",
 				"abf988eca60b353c1a1a030219466acc8d355c35a1e40c508e392dd3496be525",
 				"e8d84a48c5240adeb41ba5d66fce91cc6df2ef87031debacdd8ab56f40c2227b",
 				"17635be05f865e1efeeaba6c83db9c80bfdd09be56c4fe8504eacc55cfd3fd88",
-				"e8d84a48c5240adeb41ba5d66fce91cc6df2ef87031debacdd8ab56f40c2227b",
+				"7ee3bf580d7f9d45767502618f3c91e88626311f05c9f807208d6bef8ca4b0df",
 			},
 			false,
 		},
