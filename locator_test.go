@@ -84,12 +84,18 @@ func TestParseLocator(t *testing.T) {
 			}, nil, false,
 		},
 		{
-			// This test ensures it is all a big file path (not host)
 			"file-revision", Locator("file://test@ca3dc240593e102219b70cd0c590b1dfce5e3006"),
 			&Components{
 				Transport: "file", Hostname: "", RepoPath: "test", Tool: "git",
 				Commit:    "ca3dc240593e102219b70cd0c590b1dfce5e3006",
 				RefString: "ca3dc240593e102219b70cd0c590b1dfce5e3006",
+			}, nil, false,
+		},
+		{
+			"file-ref", Locator("file:///home/user/repo@refs/notes/commits#28/a0276dde459992f3d8bbb4cb41cd34313a99ff"),
+			&Components{
+				Transport: "file", Hostname: "", RepoPath: "/home/user/repo", Tool: "git",
+				RefString: "refs/notes/commits", SubPath: "28/a0276dde459992f3d8bbb4cb41cd34313a99ff",
 			}, nil, false,
 		},
 	} {
