@@ -26,6 +26,13 @@ import (
 const (
 	sha1Pattern      = "^[a-f0-9]{40}$"
 	sha1ShortPattern = "^[a-f0-9]{7}$"
+
+	// Supported transport strings
+	TransportSSH   = "ssh"
+	TransportHTTPS = "https"
+	TransportFile  = "file"
+
+	ToolGit = "git"
 )
 
 var sha1Regex, sha1ShortRegex *regexp.Regexp
@@ -49,12 +56,12 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 	}
 
 	var transportIsFile bool
-	if strings.HasPrefix(string(l), "file://") {
+	if strings.HasPrefix(string(l), TransportFile+"://") {
 		transportIsFile = true
 	}
 
 	// Parse the url, pretriming the file schema if it's there
-	u, err := url.Parse(strings.TrimPrefix(string(l), "file://"))
+	u, err := url.Parse(strings.TrimPrefix(string(l), TransportFile+"://"))
 	if err != nil {
 		return nil, err
 	}
@@ -65,14 +72,14 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 	tool, transport, si := strings.Cut(u.Scheme, "+")
 	// Synth the file schema to capture all into the path early
 	if transportIsFile {
-		transport = "file"
+		transport = TransportFile
 		tool = "git"
 		si = true
 	}
 
 	if !si {
 		transport = tool
-		if transport != "https" && transport != "ssh" && transport != "file" {
+		if transport != TransportHTTPS && transport != TransportSSH && transport != TransportFile {
 			return nil, fmt.Errorf("only locators with a https, ssh or file transport are supported")
 		}
 		tool = ""
@@ -106,7 +113,7 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 	hostname := u.Hostname()
 
 	// If there is a hostname in a file URI, prepend it to the path
-	if transport == "file" && hostname != "" {
+	if transport == TransportFile && hostname != "" {
 		if path == "" {
 			path = u.Hostname()
 		} else {
