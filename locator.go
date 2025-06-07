@@ -54,7 +54,13 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 		return nil, errors.New("locator is an empty string")
 	}
 
-	u, err := url.Parse(string(l))
+	var transportIsFile bool
+	if strings.HasPrefix(string(l), "file://") {
+		transportIsFile = true
+	}
+
+	// Parse the url, pretriming the file schema if it's there
+	u, err := url.Parse(strings.TrimPrefix(string(l), "file://"))
 	if err != nil {
 		return nil, err
 	}
@@ -63,10 +69,17 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 	path, ref, _ := strings.Cut(u.Path, "@")
 
 	tool, transport, si := strings.Cut(u.Scheme, "+")
+	// Synth the file schema to capture all into the path early
+	if transportIsFile {
+		transport = "file"
+		tool = "git"
+		si = true
+	}
+
 	if !si {
 		transport = tool
-		if transport != "https" && transport != "ssh" {
-			return nil, fmt.Errorf("only locators with a https or ssh transport are supported")
+		if transport != "https" && transport != "ssh" && transport != "file" {
+			return nil, fmt.Errorf("only locators with a https, ssh or file transport are supported")
 		}
 		tool = ""
 	}
@@ -96,10 +109,22 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 		}
 	}
 
+	hostname := u.Hostname()
+
+	// If there is a hostname in a file URI, prepend it to the path
+	if transport == "file" && hostname != "" {
+		if path == "" {
+			path = u.Hostname()
+		} else {
+			path = u.Hostname() + "/" + strings.TrimPrefix(path, "/")
+		}
+		hostname = ""
+	}
+
 	return &Components{
 		Tool:      tool,
 		Transport: transport,
-		Hostname:  u.Hostname(),
+		Hostname:  hostname,
 		RepoPath:  path,
 		RefString: ref,
 		Tag:       tag,
@@ -372,9 +397,15 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 		fsobj = osfs.New(opts.ClonePath)
 	}
 
+	// Handle cloning from repos with file: transport
+	repourl := components.RepoURL()
+	if components.Transport == "file" {
+		repourl = components.RepoPath
+	}
+
 	// Make a shallow clone of the repo to memory
 	repo, err := git.Clone(memory.NewStorage(), fsobj, &git.CloneOptions{
-		URL: components.RepoURL(),
+		URL: repourl,
 		// Progress:      os.Stdout,
 		ReferenceName: reference,
 		SingleBranch:  true,

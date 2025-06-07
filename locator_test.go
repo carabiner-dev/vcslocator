@@ -59,6 +59,39 @@ func TestParseLocator(t *testing.T) {
 				Branch: "", Tag: "abcd", Commit: "",
 			}, nil, false,
 		},
+		{
+			// This test ensures it is all a big file path (not host)
+			"file-no-host", Locator("file:///github.com/example/test"),
+			&Components{Transport: "file", Hostname: "", RepoPath: "/github.com/example/test", Tool: "git"}, nil, false,
+		},
+		{
+			// This test ensures it is all a big file path (not host)
+			"file-host-to-relative", Locator("file://github.com/example/test"),
+			&Components{Transport: "file", Hostname: "", RepoPath: "github.com/example/test", Tool: "git"}, nil, false,
+		},
+		{
+			// This test ensures it is all a big file path (not host)
+			"file-relative", Locator("file://."),
+			&Components{Transport: "file", Hostname: "", RepoPath: ".", Tool: "git"}, nil, false,
+		},
+		{
+			// This test ensures it is all a big file path (not host)
+			"file-relative-rev", Locator("file://.@ca3dc240593e102219b70cd0c590b1dfce5e3006"),
+			&Components{
+				Transport: "file", Hostname: "", RepoPath: ".", Tool: "git",
+				Commit:    "ca3dc240593e102219b70cd0c590b1dfce5e3006",
+				RefString: "ca3dc240593e102219b70cd0c590b1dfce5e3006",
+			}, nil, false,
+		},
+		{
+			// This test ensures it is all a big file path (not host)
+			"file-revision", Locator("file://test@ca3dc240593e102219b70cd0c590b1dfce5e3006"),
+			&Components{
+				Transport: "file", Hostname: "", RepoPath: "test", Tool: "git",
+				Commit:    "ca3dc240593e102219b70cd0c590b1dfce5e3006",
+				RefString: "ca3dc240593e102219b70cd0c590b1dfce5e3006",
+			}, nil, false,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
