@@ -98,6 +98,43 @@ func TestParseLocator(t *testing.T) {
 				RefString: "refs/notes/commits", SubPath: "28/a0276dde459992f3d8bbb4cb41cd34313a99ff",
 			}, nil, false,
 		},
+		{
+			"slug-normal", Locator("kubernetes/release-sdk"),
+			&Components{
+				Transport: "https", Hostname: "github.com", RepoPath: "kubernetes/release-sdk", Tool: "git",
+				RefString: "", SubPath: "",
+			}, nil, false,
+		},
+		{
+			"slug-ref", Locator("kubernetes/release-sdk@main"),
+			&Components{
+				Transport: "https", Hostname: "github.com", RepoPath: "kubernetes/release-sdk", Tool: "git",
+				RefString: "main", Tag: "main", SubPath: "",
+			}, nil, false,
+		},
+		{
+			"slug-refAsBranch", Locator("kubernetes/release-sdk@main"),
+			&Components{
+				Transport: "https", Hostname: "github.com", RepoPath: "kubernetes/release-sdk", Tool: "git",
+				RefString: "main", Tag: "", Branch: "main", SubPath: "",
+			},
+			[]fnOpt{WithRefAsBranch(true)},
+			false,
+		},
+		{
+			"slug-fragment", Locator("kubernetes/release-sdk#home/"),
+			&Components{
+				Transport: "https", Hostname: "github.com", RepoPath: "kubernetes/release-sdk", Tool: "git",
+				RefString: "", SubPath: "home/",
+			}, nil, false,
+		},
+		{
+			"slug-fragment-ref", Locator("kubernetes/release-sdk@chido/one#home/"),
+			&Components{
+				Transport: "https", Hostname: "github.com", RepoPath: "kubernetes/release-sdk", Tool: "git",
+				RefString: "chido/one", Tag: "chido/one", SubPath: "home/",
+			}, nil, false,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

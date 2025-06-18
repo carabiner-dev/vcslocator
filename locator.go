@@ -40,6 +40,10 @@ var sha1Regex, sha1ShortRegex *regexp.Regexp
 // Locator is a type that wraps a VCS locator string to add functionality to it.
 type Locator string
 
+const slugRegexPattern = `^[-A-Za-z0-9_]+/[-A-Za-z0-9_]+$`
+
+var slugRegex *regexp.Regexp
+
 // Parse a VCS locator and returns its components
 func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 	// For reference, the format is:
@@ -66,7 +70,31 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 		return nil, err
 	}
 
-	var commitSha, tag, branch string
+	// Here, we detect if we are dealing with a github repo slug:
+	if slugRegex == nil {
+		slugRegex = regexp.MustCompile(slugRegexPattern)
+	}
+	// .. we ONLY treat is a such if there is no hostname, no scheme and....
+	if u.Hostname() == "" && u.Scheme == "" && u.Path != "" {
+		path, ref, _ := strings.Cut(u.Path, "@")
+		// ... we have a path that matches the slug regex (org/repo)
+		if slugRegex.MatchString(path) {
+			tag, branch, commitSha := parseRefString(ref, opts)
+			return &Components{
+				Tool:      "git",
+				Transport: "https",
+				Hostname:  "github.com",
+				RepoPath:  path,
+				RefString: ref,
+				Tag:       tag,
+				Branch:    branch,
+				Commit:    commitSha,
+				SubPath:   u.Fragment,
+			}, nil
+		}
+	}
+
+	// Cut the ref from the path
 	path, ref, _ := strings.Cut(u.Path, "@")
 
 	tool, transport, si := strings.Cut(u.Scheme, "+")
@@ -85,31 +113,7 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 		tool = ""
 	}
 
-	// TODO(puerco): Ensure this follows man gitrevisions > SPECIFYING REVISIONS
-	if ref != "" {
-		if sha1Regex == nil || sha1ShortRegex == nil {
-			sha1Regex = regexp.MustCompile(sha1Pattern)
-			sha1ShortRegex = regexp.MustCompile(sha1ShortPattern)
-		}
-
-		// If the ref looks like a commit, we treat it as such. Other reference
-		// types can be addressed by specifying the full path string (ie refs/tags/XX).
-		if sha1Regex.MatchString(ref) || sha1ShortRegex.MatchString(ref) {
-			commitSha = ref
-		}
-
-		switch {
-		case strings.HasPrefix(ref, "refs/tags/"):
-			tag = strings.TrimPrefix(ref, "refs/tags/")
-		case strings.HasPrefix(ref, "refs/heads/"):
-			branch = strings.TrimPrefix(ref, "refs/heads/")
-		case commitSha == "" && opts.RefIsBranch:
-			branch = ref
-		case commitSha == "" && !opts.RefIsBranch && !strings.HasPrefix(ref, "refs/"):
-			tag = ref
-		}
-	}
-
+	tag, branch, commitSha := parseRefString(ref, opts)
 	hostname := u.Hostname()
 
 	// If there is a hostname in a file URI, prepend it to the path
@@ -133,6 +137,36 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 		Commit:    commitSha,
 		SubPath:   u.Fragment,
 	}, nil
+}
+
+// parseRefString parses a reference string and tries to determine if its a
+// branch, a tag or a commit.
+//
+//	// TODO(puerco): Ensure this follows `man gitrevisions` > SPECIFYING REVISIONS
+func parseRefString(ref string, opts options) (tag, branch, commitSha string) {
+	if sha1Regex == nil || sha1ShortRegex == nil {
+		sha1Regex = regexp.MustCompile(sha1Pattern)
+		sha1ShortRegex = regexp.MustCompile(sha1ShortPattern)
+	}
+
+	// If the ref looks like a commit, we treat it as such. Other reference
+	// types can be addressed by specifying the full path string (ie refs/tags/XX).
+	if sha1Regex.MatchString(ref) || sha1ShortRegex.MatchString(ref) {
+		commitSha = ref
+	}
+
+	switch {
+	case strings.HasPrefix(ref, "refs/tags/"):
+		tag = strings.TrimPrefix(ref, "refs/tags/")
+	case strings.HasPrefix(ref, "refs/heads/"):
+		branch = strings.TrimPrefix(ref, "refs/heads/")
+	case commitSha == "" && opts.RefIsBranch:
+		branch = ref
+	case commitSha == "" && !opts.RefIsBranch && !strings.HasPrefix(ref, "refs/"):
+		tag = ref
+	}
+
+	return tag, branch, commitSha
 }
 
 // CloneRepository clones the repository defined by the locator to a path.
