@@ -15,7 +15,7 @@ For reference see table 19 in the [SPDX standard documentation](https://spdx.git
 At the moment the focus of this module is parsing the locator strings and
 downloading data from repositories as referenced by the URIs.
 
-#### Parsing
+### Parsing
 
 The library includes a parser that returns the components of the VCS locator:
 
@@ -49,7 +49,27 @@ fmt.Printf("%+v\n",  components)
 
 ```
 
-#### Download and Copy
+#### Support for Short GitHub Repository "Slugs"
+
+While not part of the specification, short repository _slugs_ in the form
+of `owner/repository` are supported as VCS locators. For now we default the
+hostname of the vcs locator to `github.com` and the locator schema to `git+https`.
+
+For example this short slug:
+
+```
+myorg/myrepo
+```
+
+Is equivalente to this VCS locator:
+
+```
+git+https://github.com/myorg/myrepo
+```
+
+Refrence strings and subpaths are fully supported in short slugs too.
+
+### Download and Copy
 
 The library also supports copying and downloading the data referenced by the
 VCS locator:
@@ -86,6 +106,6 @@ go get github.com/carabiner-dev/vcslocator
 
 ## Copyright
 
-This moduke is released under the Apache 2.0 license and copyright by Carabiner
+This module is released under the Apache 2.0 license and copyright by Carabiner
 Systems, Inc. Feel free to open issues, send pull requests to improve the module
 os simply let us know how you are using it. We love feedback!
