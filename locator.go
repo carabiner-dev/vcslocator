@@ -126,6 +126,10 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 		hostname = ""
 	}
 
+	if path == "" && transport == TransportFile {
+		return nil, fmt.Errorf("unable to parse path from file:// locator")
+	}
+
 	return &Components{
 		Tool:      tool,
 		Transport: transport,
