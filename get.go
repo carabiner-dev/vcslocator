@@ -90,7 +90,7 @@ func CopyFileGroup[T ~string](locators []T, writers []io.Writer, funcs ...fnOpt)
 	var mutex sync.Mutex
 	t := throttler.New(4, len(cloneList))
 	for repostring, copyplan := range cloneList {
-		go func() {
+		go func(repostring string, copyplan *copyPlan) {
 			fsobj, err := CloneRepository(copyplan.Locator)
 			mutex.Lock()
 			cloneList[repostring].FS = fsobj
@@ -99,7 +99,7 @@ func CopyFileGroup[T ~string](locators []T, writers []io.Writer, funcs ...fnOpt)
 				err = fmt.Errorf("reading %q: %w", copyplan.Locator, err)
 			}
 			t.Done(err)
-		}()
+		}(repostring, copyplan)
 		t.Throttle()
 	}
 
@@ -110,23 +110,28 @@ func CopyFileGroup[T ~string](locators []T, writers []io.Writer, funcs ...fnOpt)
 	// Now copy the files in parallel
 	errs := map[int]error{}
 	t2 := throttler.New(4, len(locators))
+	var emtx sync.Mutex
 	for _, copyplan := range cloneList {
 		for i, path := range copyplan.Files {
-			go func() {
+			go func(i int, path string, copyplan *copyPlan) {
 				f, err := copyplan.FS.Open(path)
 				if err != nil {
+					emtx.Lock()
 					errs[i] = fmt.Errorf("opening path %d (%q): %w", i, path, err)
+					emtx.Unlock()
 					t2.Done(nil)
 					return
 				}
 				defer f.Close() //nolint:errcheck
 				if _, err := io.Copy(writers[i], f); err != nil {
+					emtx.Lock()
 					errs[i] = fmt.Errorf("copying data stream %d: %w", i, err)
+					emtx.Unlock()
 					t2.Done(nil)
 					return
 				}
 				t2.Done(nil)
-			}()
+			}(i, path, copyplan)
 			t2.Throttle()
 		}
 	}
