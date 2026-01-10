@@ -20,6 +20,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/storage/memory"
 )
 
@@ -217,9 +218,18 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 		repourl = components.RepoPath
 	}
 
+	var auth transport.AuthMethod
+	if opts.ReadCredentials {
+		auth, err = GetAuthMethod(l)
+		if err != nil {
+			return nil, fmt.Errorf("getting git auth method: %w", err)
+		}
+	}
+
 	// Make a shallow clone of the repo to memory
 	repo, err := git.Clone(memory.NewStorage(), fsobj, &git.CloneOptions{
-		URL: repourl,
+		URL:  repourl,
+		Auth: auth,
 		// Progress:      os.Stdout,
 		ReferenceName: reference,
 		SingleBranch:  true,

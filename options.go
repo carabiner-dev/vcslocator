@@ -13,10 +13,17 @@ import (
 type options struct {
 	RefIsBranch bool
 	ClonePath   string
+
+	// ReadCredentials controls if the library loads the system git credentials
+	ReadCredentials bool
+
+	// Username and password for HTTP basic config
+	HttpUsername, HttpPassword string
 }
 
 var defaultOptions = options{
-	RefIsBranch: false,
+	ReadCredentials: true,
+	RefIsBranch:     false,
 }
 
 type fnOpt func(*options) error
@@ -44,6 +51,30 @@ func WithClonePath(path string) fnOpt {
 
 		o.ClonePath = path
 
+		return nil
+	}
+}
+
+// WithSystemCredentials controls if cloning uses the system credentials
+func WithSystemCredentials(yesno bool) fnOpt {
+	return func(o *options) error {
+		if o == nil {
+			return errors.New("options are nil")
+		}
+		o.ReadCredentials = yesno
+		return nil
+	}
+}
+
+// WithHttpAuth configures basic authentication for http operations
+func WithHttpAuth(user, password string) fnOpt {
+	return func(o *options) error {
+		if o == nil {
+			return errors.New("options are nil")
+		}
+
+		o.HttpUsername = user
+		o.HttpPassword = password
 		return nil
 	}
 }
