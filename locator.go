@@ -20,6 +20,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/storage/memory"
 )
 
@@ -97,17 +98,17 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 	// Cut the ref from the path
 	path, ref, _ := strings.Cut(u.Path, "@")
 
-	tool, transport, si := strings.Cut(u.Scheme, "+")
+	tool, transp, si := strings.Cut(u.Scheme, "+")
 	// Synth the file schema to capture all into the path early
 	if transportIsFile {
-		transport = TransportFile
+		transp = TransportFile
 		tool = "git"
 		si = true
 	}
 
 	if !si {
-		transport = tool
-		if transport != TransportHTTPS && transport != TransportSSH && transport != TransportFile {
+		transp = tool
+		if transp != TransportHTTPS && transp != TransportSSH && transp != TransportFile {
 			return nil, fmt.Errorf("only locators with a https, ssh or file transport are supported")
 		}
 		tool = ""
@@ -117,7 +118,7 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 	hostname := u.Hostname()
 
 	// If there is a hostname in a file URI, prepend it to the path
-	if transport == TransportFile && hostname != "" {
+	if transp == TransportFile && hostname != "" {
 		if path == "" {
 			path = u.Hostname()
 		} else {
@@ -126,13 +127,13 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 		hostname = ""
 	}
 
-	if path == "" && transport == TransportFile {
+	if path == "" && transp == TransportFile {
 		return nil, fmt.Errorf("unable to parse path from file:// locator")
 	}
 
 	return &Components{
 		Tool:      tool,
-		Transport: transport,
+		Transport: transp,
 		Hostname:  hostname,
 		RepoPath:  path,
 		RefString: ref,
@@ -217,9 +218,18 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 		repourl = components.RepoPath
 	}
 
+	var auth transport.AuthMethod
+	if opts.ReadCredentials {
+		auth, err = GetAuthMethod(l)
+		if err != nil {
+			return nil, fmt.Errorf("getting git auth method: %w", err)
+		}
+	}
+
 	// Make a shallow clone of the repo to memory
 	repo, err := git.Clone(memory.NewStorage(), fsobj, &git.CloneOptions{
-		URL: repourl,
+		URL:  repourl,
+		Auth: auth,
 		// Progress:      os.Stdout,
 		ReferenceName: reference,
 		SingleBranch:  true,
