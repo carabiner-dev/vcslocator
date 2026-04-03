@@ -37,7 +37,7 @@ func GetAuthMethod[T ~string](locator T, funcs ...fnOpt) (transport.AuthMethod, 
 	case TransportSSH:
 		return getSSHAuth()
 	case TransportHTTPS:
-		return getHTTPAuth(opts), nil
+		return getHTTPAuth(&opts), nil
 	case TransportFile:
 		return nil, nil // No auth needed for local file:// repos
 	default:
@@ -95,7 +95,7 @@ func getSSHAuth() (transport.AuthMethod, error) {
 
 // getHTTPAuth returns HTTP an authenticator using the credentials configured
 // in the options
-func getHTTPAuth(opts options) transport.AuthMethod {
+func getHTTPAuth(opts *options) transport.AuthMethod {
 	if opts.HttpPassword == "" && opts.HttpUsername == "" {
 		return nil
 	}

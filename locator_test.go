@@ -268,7 +268,7 @@ func initTestRepo(t *testing.T, dir, remoteURL string) *git.Repository {
 	require.NoError(t, err)
 
 	// Create a file and commit so HEAD exists.
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello"), 0o600))
 	_, err = wt.Add("README.md")
 	require.NoError(t, err)
 	_, err = wt.Commit("initial commit", &git.CommitOptions{
@@ -300,7 +300,7 @@ func TestReadFromRepo(t *testing.T) {
 
 		// Create nested subdirectories inside the repo.
 		nested := filepath.Join(dir, "a", "b", "c")
-		require.NoError(t, os.MkdirAll(nested, 0o755))
+		require.NoError(t, os.MkdirAll(nested, 0o750))
 
 		loc, err := ReadFromRepo(nested)
 		require.NoError(t, err)
@@ -313,7 +313,7 @@ func TestReadFromRepo(t *testing.T) {
 		initTestRepo(t, dir, "https://github.com/example/repo.git")
 
 		nested := filepath.Join(dir, "a", "b")
-		require.NoError(t, os.MkdirAll(nested, 0o755))
+		require.NoError(t, os.MkdirAll(nested, 0o750))
 
 		loc, err := ReadFromRepo(nested, WithTopLevelPath(dir))
 		require.NoError(t, err)
@@ -327,9 +327,9 @@ func TestReadFromRepo(t *testing.T) {
 
 		// Set the top-level to a child dir so the walk never reaches the repo root.
 		child := filepath.Join(dir, "sub")
-		require.NoError(t, os.MkdirAll(child, 0o755))
+		require.NoError(t, os.MkdirAll(child, 0o750))
 		nested := filepath.Join(child, "deep")
-		require.NoError(t, os.MkdirAll(nested, 0o755))
+		require.NoError(t, os.MkdirAll(nested, 0o750))
 
 		_, err := ReadFromRepo(nested, WithTopLevelPath(child))
 		require.Error(t, err)
@@ -391,7 +391,7 @@ func TestReadFromRepo(t *testing.T) {
 		// that points to it.
 		outside := t.TempDir()
 		outsideChild := filepath.Join(outside, "child")
-		require.NoError(t, os.MkdirAll(outsideChild, 0o755))
+		require.NoError(t, os.MkdirAll(outsideChild, 0o750))
 
 		linkDir := filepath.Join(dir, "link")
 		require.NoError(t, os.Symlink(outsideChild, linkDir))
