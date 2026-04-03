@@ -19,6 +19,10 @@ type options struct {
 
 	// Username and password for HTTP basic config
 	HttpUsername, HttpPassword string
+
+	// TopLevelPath sets the uppermost directory to search when walking up the
+	// filesystem looking for a git repository. Defaults to the filesystem root.
+	TopLevelPath string
 }
 
 var defaultOptions = options{
@@ -62,6 +66,18 @@ func WithSystemCredentials(yesno bool) fnOpt {
 			return errors.New("options are nil")
 		}
 		o.ReadCredentials = yesno
+		return nil
+	}
+}
+
+// WithTopLevelPath sets the uppermost directory the repository search will
+// walk up to. The path must be a parent of the starting directory.
+func WithTopLevelPath(path string) fnOpt {
+	return func(o *options) error {
+		if o == nil {
+			return errors.New("options are nil")
+		}
+		o.TopLevelPath = path
 		return nil
 	}
 }
