@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -289,4 +291,145 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 	}
 
 	return iofs.New(fsobj), nil
+}
+
+// ReadFromRepo opens a git repository by walking up from startDir toward the
+// filesystem root (or the directory set via WithTopLevelPath) and returns a
+// VCS Locator built from the repository's origin remote URL and current HEAD.
+func ReadFromRepo(startDir string, funcs ...fnOpt) (Locator, error) {
+	opts := defaultOptions
+	for _, fn := range funcs {
+		if err := fn(&opts); err != nil {
+			return "", err
+		}
+	}
+
+	// Resolve the start directory to its real path so we can detect symlink
+	// divergence on every step upward.
+	realStart, err := filepath.EvalSymlinks(startDir)
+	if err != nil {
+		return "", fmt.Errorf("resolving start directory: %w", err)
+	}
+	realStart, err = filepath.Abs(realStart)
+	if err != nil {
+		return "", fmt.Errorf("computing absolute path: %w", err)
+	}
+
+	// Determine the stop boundary.
+	stopAt := string(os.PathSeparator)
+	if opts.TopLevelPath != "" {
+		stopAt, err = filepath.Abs(opts.TopLevelPath)
+		if err != nil {
+			return "", fmt.Errorf("resolving top-level path: %w", err)
+		}
+		stopAt, err = filepath.EvalSymlinks(stopAt)
+		if err != nil {
+			return "", fmt.Errorf("resolving top-level path symlinks: %w", err)
+		}
+
+		// The top-level path must be a prefix of (or equal to) the start path.
+		rel, err := filepath.Rel(stopAt, realStart)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			return "", fmt.Errorf("top-level path %q is not a parent of start directory %q", opts.TopLevelPath, startDir)
+		}
+	}
+
+	// Walk upward looking for a git repository.
+	current := realStart
+	for {
+		// Verify the resolved path hasn't diverged from the original path
+		// hierarchy (e.g. a symlink pointing outside the tree).
+		resolved, err := filepath.EvalSymlinks(current)
+		if err != nil {
+			return "", fmt.Errorf("resolving path %q: %w", current, err)
+		}
+		if resolved != current {
+			return "", fmt.Errorf("path diverged via symlink: %q resolves to %q", current, resolved)
+		}
+
+		repo, err := git.PlainOpen(current)
+		if err == nil {
+			return locatorFromRepo(repo)
+		}
+
+		// If we've reached the stop boundary, give up.
+		if current == stopAt {
+			break
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			// Reached filesystem root.
+			break
+		}
+		current = parent
+	}
+
+	return "", fmt.Errorf("no git repository found between %q and %q", startDir, stopAt)
+}
+
+// locatorFromRepo builds a Locator from an open git repository by reading
+// the "origin" remote URL and the current HEAD reference.
+func locatorFromRepo(repo *git.Repository) (Locator, error) {
+	remote, err := repo.Remote("origin")
+	if err != nil {
+		return "", fmt.Errorf("reading origin remote: %w", err)
+	}
+
+	urls := remote.Config().URLs
+	if len(urls) == 0 {
+		return "", errors.New("origin remote has no URLs")
+	}
+	remoteURL := urls[0]
+
+	head, err := repo.Head()
+	if err != nil {
+		return "", fmt.Errorf("reading HEAD: %w", err)
+	}
+
+	ref := head.Hash().String()
+	if head.Name().IsBranch() {
+		ref = head.Name().String()
+	}
+
+	// Normalise the remote URL into a locator string.
+	locatorStr, err := remoteURLToLocator(remoteURL, ref)
+	if err != nil {
+		return "", err
+	}
+
+	return Locator(locatorStr), nil
+}
+
+// remoteURLToLocator converts a git remote URL (HTTPS or SSH) and a ref into
+// a VCS locator string.
+func remoteURLToLocator(rawURL, ref string) (string, error) {
+	// Handle SCP-style SSH URLs: git@host:org/repo.git
+	if strings.Contains(rawURL, "@") && strings.Contains(rawURL, ":") && !strings.Contains(rawURL, "://") {
+		parts := strings.SplitN(rawURL, ":", 2)
+		hostPart := strings.SplitN(parts[0], "@", 2)
+		if len(hostPart) != 2 || len(parts) != 2 {
+			return "", fmt.Errorf("unable to parse SSH URL %q", rawURL)
+		}
+		path := strings.TrimSuffix(parts[1], ".git")
+		return fmt.Sprintf("git+ssh://%s/%s@%s", hostPart[1], path, ref), nil
+	}
+
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("parsing remote URL: %w", err)
+	}
+
+	path := strings.TrimSuffix(strings.TrimPrefix(u.Path, "/"), ".git")
+
+	switch u.Scheme {
+	case "https", "http":
+		return fmt.Sprintf("git+https://%s/%s@%s", u.Hostname(), path, ref), nil
+	case "ssh":
+		return fmt.Sprintf("git+ssh://%s/%s@%s", u.Hostname(), path, ref), nil
+	case "file", "":
+		return fmt.Sprintf("file://%s@%s", u.Path, ref), nil
+	default:
+		return "", fmt.Errorf("unsupported remote URL scheme %q", u.Scheme)
+	}
 }
