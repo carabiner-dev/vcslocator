@@ -6,8 +6,14 @@ package vcslocator
 import (
 	"crypto/sha256"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/stretchr/testify/require"
 )
 
@@ -241,6 +247,210 @@ func TestGetGroup(t *testing.T) {
 				h.Write(data)
 				require.Equal(t, tc.expect[i], fmt.Sprintf("%x", h.Sum(nil)))
 			}
+		})
+	}
+}
+
+// initTestRepo creates a git repo in dir with an "origin" remote and one commit,
+// returning the repo. The caller owns the temp directory cleanup.
+func initTestRepo(t *testing.T, dir, remoteURL string) *git.Repository {
+	t.Helper()
+	repo, err := git.PlainInit(dir, false)
+	require.NoError(t, err)
+
+	_, err = repo.CreateRemote(&config.RemoteConfig{
+		Name: "origin",
+		URLs: []string{remoteURL},
+	})
+	require.NoError(t, err)
+
+	wt, err := repo.Worktree()
+	require.NoError(t, err)
+
+	// Create a file and commit so HEAD exists.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello"), 0o644))
+	_, err = wt.Add("README.md")
+	require.NoError(t, err)
+	_, err = wt.Commit("initial commit", &git.CommitOptions{
+		Author: &object.Signature{Name: "test", Email: "test@test.com", When: time.Now()},
+	})
+	require.NoError(t, err)
+
+	return repo
+}
+
+func TestReadFromRepo(t *testing.T) {
+	t.Parallel()
+
+	t.Run("finds repo in start directory", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		initTestRepo(t, dir, "https://github.com/example/repo.git")
+
+		loc, err := ReadFromRepo(dir)
+		require.NoError(t, err)
+		require.Contains(t, string(loc), "example/repo")
+		require.Contains(t, string(loc), "git+https://")
+	})
+
+	t.Run("finds repo by walking up", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		initTestRepo(t, dir, "https://github.com/example/repo.git")
+
+		// Create nested subdirectories inside the repo.
+		nested := filepath.Join(dir, "a", "b", "c")
+		require.NoError(t, os.MkdirAll(nested, 0o755))
+
+		loc, err := ReadFromRepo(nested)
+		require.NoError(t, err)
+		require.Contains(t, string(loc), "example/repo")
+	})
+
+	t.Run("respects WithTopLevelPath", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		initTestRepo(t, dir, "https://github.com/example/repo.git")
+
+		nested := filepath.Join(dir, "a", "b")
+		require.NoError(t, os.MkdirAll(nested, 0o755))
+
+		loc, err := ReadFromRepo(nested, WithTopLevelPath(dir))
+		require.NoError(t, err)
+		require.Contains(t, string(loc), "example/repo")
+	})
+
+	t.Run("stops at top level path before finding repo", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		initTestRepo(t, dir, "https://github.com/example/repo.git")
+
+		// Set the top-level to a child dir so the walk never reaches the repo root.
+		child := filepath.Join(dir, "sub")
+		require.NoError(t, os.MkdirAll(child, 0o755))
+		nested := filepath.Join(child, "deep")
+		require.NoError(t, os.MkdirAll(nested, 0o755))
+
+		_, err := ReadFromRepo(nested, WithTopLevelPath(child))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "no git repository found")
+	})
+
+	t.Run("errors when top level path is not parent of start", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		other := t.TempDir()
+
+		_, err := ReadFromRepo(dir, WithTopLevelPath(other))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "is not a parent of")
+	})
+
+	t.Run("errors when start directory does not exist", func(t *testing.T) {
+		t.Parallel()
+		_, err := ReadFromRepo("/nonexistent/path/that/does/not/exist")
+		require.Error(t, err)
+	})
+
+	t.Run("no repo found returns error", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		_, err := ReadFromRepo(dir, WithTopLevelPath(dir))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "no git repository found")
+	})
+
+	t.Run("ssh remote URL", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		initTestRepo(t, dir, "git@github.com:example/repo.git")
+
+		loc, err := ReadFromRepo(dir)
+		require.NoError(t, err)
+		require.Contains(t, string(loc), "git+ssh://github.com/example/repo")
+	})
+
+	t.Run("branch ref in locator", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		initTestRepo(t, dir, "https://github.com/example/repo.git")
+
+		loc, err := ReadFromRepo(dir)
+		require.NoError(t, err)
+		// HEAD should be on a branch (master or main), so the locator
+		// should contain refs/heads/ as the ref part.
+		require.Contains(t, string(loc), "refs/heads/")
+	})
+
+	t.Run("detects symlink divergence", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		initTestRepo(t, dir, "https://github.com/example/repo.git")
+
+		// Create a directory outside the repo and a symlink inside the repo
+		// that points to it.
+		outside := t.TempDir()
+		outsideChild := filepath.Join(outside, "child")
+		require.NoError(t, os.MkdirAll(outsideChild, 0o755))
+
+		linkDir := filepath.Join(dir, "link")
+		require.NoError(t, os.Symlink(outsideChild, linkDir))
+
+		// Starting from the symlinked path — after EvalSymlinks it will
+		// resolve to the outside directory and the walk should not find
+		// the repo (because the resolved path is outside the repo tree).
+		_, err := ReadFromRepo(linkDir, WithTopLevelPath(outside))
+		require.Error(t, err)
+	})
+}
+
+func TestRemoteURLToLocator(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name      string
+		remoteURL string
+		ref       string
+		expected  string
+		mustErr   bool
+	}{
+		{
+			"https",
+			"https://github.com/example/repo.git",
+			"refs/heads/main",
+			"git+https://github.com/example/repo@refs/heads/main",
+			false,
+		},
+		{
+			"https-no-dotgit",
+			"https://github.com/example/repo",
+			"abc1234",
+			"git+https://github.com/example/repo@abc1234",
+			false,
+		},
+		{
+			"ssh-scp",
+			"git@github.com:org/project.git",
+			"refs/heads/main",
+			"git+ssh://github.com/org/project@refs/heads/main",
+			false,
+		},
+		{
+			"ssh-scheme",
+			"ssh://git@github.com/org/project.git",
+			"refs/heads/main",
+			"git+ssh://github.com/org/project@refs/heads/main",
+			false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := remoteURLToLocator(tc.remoteURL, tc.ref)
+			if tc.mustErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, result)
 		})
 	}
 }
