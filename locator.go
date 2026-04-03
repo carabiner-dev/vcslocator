@@ -82,7 +82,7 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 		path, ref, _ := strings.Cut(u.Path, "@")
 		// ... we have a path that matches the slug regex (org/repo)
 		if slugRegex.MatchString(path) {
-			tag, branch, commitSha := parseRefString(ref, opts)
+			tag, branch, commitSha := parseRefString(ref, &opts)
 			return &Components{
 				Tool:      "git",
 				Transport: "https",
@@ -116,7 +116,7 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 		tool = ""
 	}
 
-	tag, branch, commitSha := parseRefString(ref, opts)
+	tag, branch, commitSha := parseRefString(ref, &opts)
 	hostname := u.Hostname()
 
 	// If there is a hostname in a file URI, prepend it to the path
@@ -150,7 +150,7 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 // branch, a tag or a commit.
 //
 //	// TODO(puerco): Ensure this follows `man gitrevisions` > SPECIFYING REVISIONS
-func parseRefString(ref string, opts options) (tag, branch, commitSha string) {
+func parseRefString(ref string, opts *options) (tag, branch, commitSha string) {
 	if sha1Regex == nil || sha1ShortRegex == nil {
 		sha1Regex = regexp.MustCompile(sha1Pattern)
 		sha1ShortRegex = regexp.MustCompile(sha1ShortPattern)
