@@ -4,7 +4,7 @@ go 1.24.11
 
 require (
 	github.com/go-git/go-billy/v5 v5.8.0
-	github.com/go-git/go-git/v5 v5.17.1
+	github.com/go-git/go-git/v5 v5.17.2
 	github.com/nozzle/throttler v0.0.0-20180817012639-2ea982251481
 	github.com/stretchr/testify v1.11.1
 )
