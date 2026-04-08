@@ -63,6 +63,8 @@ func initTestRepoWithFiles(t *testing.T, files map[string]string) (repoDir, comm
 func TestCopyFile(t *testing.T) {
 	t.Parallel()
 
+	noAuth := WithSystemCredentials(false)
+
 	repoDir, commitHash := initTestRepoWithFiles(t, map[string]string{
 		"hello.txt":         "hello world",
 		"docs/guide.md":     "# Guide\nSome content.",
@@ -74,7 +76,7 @@ func TestCopyFile(t *testing.T) {
 		t.Parallel()
 		locator := fileLocator(repoDir, commitHash, "hello.txt")
 		var buf bytes.Buffer
-		err := CopyFile(locator, &buf)
+		err := CopyFile(locator, &buf, noAuth)
 		require.NoError(t, err)
 		require.Equal(t, "hello world", buf.String())
 	})
@@ -83,7 +85,7 @@ func TestCopyFile(t *testing.T) {
 		t.Parallel()
 		locator := fileLocator(repoDir, commitHash, "docs/guide.md")
 		var buf bytes.Buffer
-		err := CopyFile(locator, &buf)
+		err := CopyFile(locator, &buf, noAuth)
 		require.NoError(t, err)
 		require.Equal(t, "# Guide\nSome content.", buf.String())
 	})
@@ -92,7 +94,7 @@ func TestCopyFile(t *testing.T) {
 		t.Parallel()
 		locator := fileLocator(repoDir, commitHash, "")
 		var buf bytes.Buffer
-		err := CopyFile(locator, &buf)
+		err := CopyFile(locator, &buf, noAuth)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "no subpath defined")
 	})
@@ -101,7 +103,7 @@ func TestCopyFile(t *testing.T) {
 		t.Parallel()
 		locator := fileLocator(repoDir, commitHash, "nonexistent.txt")
 		var buf bytes.Buffer
-		err := CopyFile(locator, &buf)
+		err := CopyFile(locator, &buf, noAuth)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "opening file")
 	})
@@ -109,13 +111,15 @@ func TestCopyFile(t *testing.T) {
 	t.Run("errors on invalid locator", func(t *testing.T) {
 		t.Parallel()
 		var buf bytes.Buffer
-		err := CopyFile("://invalid", &buf)
+		err := CopyFile("://invalid", &buf, noAuth)
 		require.Error(t, err)
 	})
 }
 
 func TestDownload(t *testing.T) {
 	t.Parallel()
+
+	noAuth := WithSystemCredentials(false)
 
 	repoDir, commitHash := initTestRepoWithFiles(t, map[string]string{
 		"hello.txt":         "hello world",
@@ -129,7 +133,7 @@ func TestDownload(t *testing.T) {
 		t.Parallel()
 		destDir := t.TempDir()
 		locator := fileLocator(repoDir, commitHash, "hello.txt")
-		err := Download(locator, destDir)
+		err := Download(locator, destDir, noAuth)
 		require.NoError(t, err)
 
 		content, err := os.ReadFile(filepath.Join(destDir, "hello.txt"))
@@ -141,7 +145,7 @@ func TestDownload(t *testing.T) {
 		t.Parallel()
 		destDir := t.TempDir()
 		locator := fileLocator(repoDir, commitHash, "docs/")
-		err := Download(locator, destDir)
+		err := Download(locator, destDir, noAuth)
 		require.NoError(t, err)
 
 		guide, err := os.ReadFile(filepath.Join(destDir, "docs", "guide.md"))
@@ -157,7 +161,7 @@ func TestDownload(t *testing.T) {
 		t.Parallel()
 		destDir := t.TempDir()
 		locator := fileLocator(repoDir, commitHash, "src/")
-		err := Download(locator, destDir)
+		err := Download(locator, destDir, noAuth)
 		require.NoError(t, err)
 
 		mainGo, err := os.ReadFile(filepath.Join(destDir, "src", "main.go"))
@@ -173,7 +177,7 @@ func TestDownload(t *testing.T) {
 		t.Parallel()
 		destDir := t.TempDir()
 		locator := fileLocator(repoDir, commitHash, "")
-		err := Download(locator, destDir)
+		err := Download(locator, destDir, noAuth)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "no subpath defined")
 	})
@@ -181,7 +185,7 @@ func TestDownload(t *testing.T) {
 	t.Run("errors on invalid locator", func(t *testing.T) {
 		t.Parallel()
 		destDir := t.TempDir()
-		err := Download("://invalid", destDir)
+		err := Download("://invalid", destDir, noAuth)
 		require.Error(t, err)
 	})
 }
