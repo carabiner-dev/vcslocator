@@ -29,15 +29,21 @@ jobs:
 
   test:
     needs: go-versions
+    name: Go Tests (go ${{ matrix.go-version }}, ${{ matrix.os }})
     permissions:
       contents: read
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         go-version:
           - ${{ needs.go-versions.outputs.previous }}
           - ${{ needs.go-versions.outputs.stable }}
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+      fail-fast: false
 
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
