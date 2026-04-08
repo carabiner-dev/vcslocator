@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -15,6 +16,21 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/stretchr/testify/require"
 )
+
+// fileLocator builds a file:// locator string that works on all platforms.
+// On Windows, backslashes are converted to forward slashes and the path
+// is prefixed with a leading slash (e.g. file:///D:/tmp/repo@commit#sub).
+func fileLocator(repoDir, commitHash, fragment string) string {
+	p := filepath.ToSlash(repoDir)
+	if runtime.GOOS == "windows" && len(p) > 0 && p[0] != '/' {
+		p = "/" + p
+	}
+	loc := fmt.Sprintf("file://%s@%s", p, commitHash)
+	if fragment != "" {
+		loc += "#" + fragment
+	}
+	return loc
+}
 
 // initTestRepoWithFiles creates a bare-ish local git repo with multiple files
 // committed, returning the absolute repo path and the commit hash.
@@ -56,7 +72,7 @@ func TestCopyFile(t *testing.T) {
 
 	t.Run("copies a top-level file", func(t *testing.T) {
 		t.Parallel()
-		locator := fmt.Sprintf("file://%s@%s#hello.txt", repoDir, commitHash)
+		locator := fileLocator(repoDir, commitHash, "hello.txt")
 		var buf bytes.Buffer
 		err := CopyFile(locator, &buf)
 		require.NoError(t, err)
@@ -65,7 +81,7 @@ func TestCopyFile(t *testing.T) {
 
 	t.Run("copies a nested file", func(t *testing.T) {
 		t.Parallel()
-		locator := fmt.Sprintf("file://%s@%s#docs/guide.md", repoDir, commitHash)
+		locator := fileLocator(repoDir, commitHash, "docs/guide.md")
 		var buf bytes.Buffer
 		err := CopyFile(locator, &buf)
 		require.NoError(t, err)
@@ -74,7 +90,7 @@ func TestCopyFile(t *testing.T) {
 
 	t.Run("errors when no subpath", func(t *testing.T) {
 		t.Parallel()
-		locator := fmt.Sprintf("file://%s@%s", repoDir, commitHash)
+		locator := fileLocator(repoDir, commitHash, "")
 		var buf bytes.Buffer
 		err := CopyFile(locator, &buf)
 		require.Error(t, err)
@@ -83,7 +99,7 @@ func TestCopyFile(t *testing.T) {
 
 	t.Run("errors when file does not exist", func(t *testing.T) {
 		t.Parallel()
-		locator := fmt.Sprintf("file://%s@%s#nonexistent.txt", repoDir, commitHash)
+		locator := fileLocator(repoDir, commitHash, "nonexistent.txt")
 		var buf bytes.Buffer
 		err := CopyFile(locator, &buf)
 		require.Error(t, err)
@@ -112,7 +128,7 @@ func TestDownload(t *testing.T) {
 	t.Run("downloads a single file by subpath", func(t *testing.T) {
 		t.Parallel()
 		destDir := t.TempDir()
-		locator := fmt.Sprintf("file://%s@%s#hello.txt", repoDir, commitHash)
+		locator := fileLocator(repoDir, commitHash, "hello.txt")
 		err := Download(locator, destDir)
 		require.NoError(t, err)
 
@@ -124,7 +140,7 @@ func TestDownload(t *testing.T) {
 	t.Run("downloads a directory subtree", func(t *testing.T) {
 		t.Parallel()
 		destDir := t.TempDir()
-		locator := fmt.Sprintf("file://%s@%s#docs/", repoDir, commitHash)
+		locator := fileLocator(repoDir, commitHash, "docs/")
 		err := Download(locator, destDir)
 		require.NoError(t, err)
 
@@ -140,7 +156,7 @@ func TestDownload(t *testing.T) {
 	t.Run("downloads nested directory subtree", func(t *testing.T) {
 		t.Parallel()
 		destDir := t.TempDir()
-		locator := fmt.Sprintf("file://%s@%s#src/", repoDir, commitHash)
+		locator := fileLocator(repoDir, commitHash, "src/")
 		err := Download(locator, destDir)
 		require.NoError(t, err)
 
@@ -156,7 +172,7 @@ func TestDownload(t *testing.T) {
 	t.Run("errors when no subpath", func(t *testing.T) {
 		t.Parallel()
 		destDir := t.TempDir()
-		locator := fmt.Sprintf("file://%s@%s", repoDir, commitHash)
+		locator := fileLocator(repoDir, commitHash, "")
 		err := Download(locator, destDir)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "no subpath defined")
