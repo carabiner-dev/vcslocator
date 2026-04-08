@@ -30,8 +30,8 @@ func initTestRepoWithFiles(t *testing.T, files map[string]string) (repoDir, comm
 
 	for relPath, content := range files {
 		abs := filepath.Join(repoDir, relPath)
-		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
-		require.NoError(t, os.WriteFile(abs, []byte(content), 0o644))
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o750))
+		require.NoError(t, os.WriteFile(abs, []byte(content), 0o600))
 		_, err := wt.Add(relPath)
 		require.NoError(t, err)
 	}
@@ -48,9 +48,9 @@ func TestCopyFile(t *testing.T) {
 	t.Parallel()
 
 	repoDir, commitHash := initTestRepoWithFiles(t, map[string]string{
-		"hello.txt":        "hello world",
-		"docs/guide.md":    "# Guide\nSome content.",
-		"src/main.go":      "package main\n",
+		"hello.txt":         "hello world",
+		"docs/guide.md":     "# Guide\nSome content.",
+		"src/main.go":       "package main\n",
 		"src/util/utils.go": "package util\n",
 	})
 
