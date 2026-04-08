@@ -218,6 +218,11 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 	repourl := components.RepoURL()
 	if components.Transport == "file" {
 		repourl = components.RepoPath
+		// On Windows, file:// URIs produce paths like /D:/... which need
+		// the leading slash stripped to form a valid local path.
+		if len(repourl) >= 3 && repourl[0] == '/' && repourl[2] == ':' {
+			repourl = repourl[1:]
+		}
 	}
 
 	var auth transport.AuthMethod
