@@ -23,7 +23,7 @@ import (
 func fileLocator(repoDir, commitHash, fragment string) string {
 	p := filepath.ToSlash(repoDir)
 	// Ensure the path starts with / so the drive letter isn't a URL scheme.
-	if len(p) > 0 && p[0] != '/' {
+	if p != "" && p[0] != '/' {
 		p = "/" + p
 	}
 	loc := fmt.Sprintf("file://%s@%s", p, commitHash)
