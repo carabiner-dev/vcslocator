@@ -221,7 +221,7 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 	}
 
 	var auth transport.AuthMethod
-	if opts.ReadCredentials {
+	if opts.ReadCredentials && components.Transport != TransportFile {
 		auth, err = GetAuthMethod(l)
 		if err != nil {
 			return nil, fmt.Errorf("getting git auth method: %w", err)

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -18,13 +17,11 @@ import (
 )
 
 // fileLocator builds a file:// locator string that works on all platforms.
-// On Windows, backslashes are converted to forward slashes and the path
-// is prefixed with a leading slash (e.g. file:///D:/tmp/repo@commit#sub).
+// On Unix, paths are absolute (/tmp/...) so file:// + path gives file:///tmp/...
+// On Windows, paths look like D:/... so file:// + path gives file://D:/...
+// which the parser treats as a relative path (no hostname).
 func fileLocator(repoDir, commitHash, fragment string) string {
 	p := filepath.ToSlash(repoDir)
-	if runtime.GOOS == "windows" && len(p) > 0 && p[0] != '/' {
-		p = "/" + p
-	}
 	loc := fmt.Sprintf("file://%s@%s", p, commitHash)
 	if fragment != "" {
 		loc += "#" + fragment
