@@ -214,14 +214,17 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 		fsobj = osfs.New(opts.ClonePath)
 	}
 
-	// Handle cloning from repos with file: transport
+	// Handle cloning from repos with file: transport.
+	// We pass the full file:// URL to go-git so it uses local transport.
+	// Passing a bare path can cause go-git to misinterpret it (e.g. on
+	// Windows, D:/path looks like an SCP-style SSH URL host:path).
 	repourl := components.RepoURL()
 	if components.Transport == "file" {
-		repourl = components.RepoPath
+		repourl = "file://" + components.RepoPath
 	}
 
 	var auth transport.AuthMethod
-	if opts.ReadCredentials {
+	if opts.ReadCredentials && components.Transport != TransportFile {
 		auth, err = GetAuthMethod(l)
 		if err != nil {
 			return nil, fmt.Errorf("getting git auth method: %w", err)
