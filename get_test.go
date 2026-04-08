@@ -18,10 +18,14 @@ import (
 
 // fileLocator builds a file:// locator string that works on all platforms.
 // On Unix, paths are absolute (/tmp/...) so file:// + path gives file:///tmp/...
-// On Windows, paths look like D:/... so file:// + path gives file://D:/...
-// which the parser treats as a relative path (no hostname).
+// On Windows, paths like D:\... need a leading slash after file:// to prevent
+// the drive letter from being parsed as a URL scheme (file:///D:/...).
 func fileLocator(repoDir, commitHash, fragment string) string {
 	p := filepath.ToSlash(repoDir)
+	// Ensure the path starts with / so the drive letter isn't a URL scheme.
+	if len(p) > 0 && p[0] != '/' {
+		p = "/" + p
+	}
 	loc := fmt.Sprintf("file://%s@%s", p, commitHash)
 	if fragment != "" {
 		loc += "#" + fragment
