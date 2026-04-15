@@ -43,6 +43,43 @@ var sha1Regex, sha1ShortRegex *regexp.Regexp
 // Locator is a type that wraps a VCS locator string to add functionality to it.
 type Locator string
 
+// NewFromPath builds a file:// Locator from a native filesystem path. It is
+// the inverse of Locator.LocalPath: backslashes are normalized to forward
+// slashes, and Windows drive-letter paths (e.g. "C:\foo\bar") are prefixed
+// with an extra slash so the drive letter isn't parsed as a URL scheme
+// (file:///C:/foo/bar). The input is treated as a pure filesystem path;
+// "@ref" or "#subpath" suffixes are not interpreted.
+func NewFromPath(path string) Locator {
+	// Always normalize backslashes so Windows paths work regardless of the
+	// host GOOS (filepath.ToSlash is a no-op on non-Windows).
+	p := strings.ReplaceAll(path, `\`, "/")
+	if p != "" && !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return Locator("file://" + p)
+}
+
+// LocalPath returns the native filesystem path for a file:// locator, suitable
+// for passing to os.Open, go-git's PlainOpen, and other local-path APIs. On
+// Windows the parsed path takes the URL form "/C:/foo/bar"; this returns
+// "C:/foo/bar" so the path isn't misread as drive-relative. For locators whose
+// transport is not "file" the return value is an empty string. Returns an
+// error only if the locator fails to parse.
+func (l Locator) LocalPath(funcs ...fnOpt) (string, error) {
+	components, err := l.Parse(funcs...)
+	if err != nil {
+		return "", err
+	}
+	if components.Transport != TransportFile {
+		return "", nil
+	}
+	p := components.RepoPath
+	if len(p) >= 3 && p[0] == '/' && p[2] == ':' {
+		p = p[1:]
+	}
+	return p, nil
+}
+
 const slugRegexPattern = `^[-A-Za-z0-9_]+/[-A-Za-z0-9_]+$`
 
 var slugRegex *regexp.Regexp
