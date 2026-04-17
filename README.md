@@ -46,7 +46,6 @@ fmt.Printf("%+v\n",  components)
 	SubPath   "filename.txt"
 }
 */
-
 ```
 
 #### Support for Short GitHub Repository "Slugs"
