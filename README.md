@@ -72,7 +72,7 @@ Refrence strings and subpaths are fully supported in short slugs too.
 ### Download and Copy
 
 The library also supports copying and downloading the data referenced by the
-VCS locator:
+VCS locator (supported for ssh, http and file transports):
 
 ```golang
 
