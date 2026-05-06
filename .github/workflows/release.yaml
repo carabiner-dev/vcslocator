@@ -44,7 +44,7 @@ jobs:
 
       - name: Generate SBOM
         id: sbom
-        uses: carabiner-dev/actions/unpack/sbom@73e94b6ec4adbf65bb7b9f4ecec334dc6576553f # v1.1.6
+        uses: carabiner-dev/actions/unpack/sbom@457739b9e0f5d7cf49098550b6158e99ac76cf34 # v1.1.6
         with:
           push-to-release: ${{ steps.tag.outputs.tag_name }}
         env:
