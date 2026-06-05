@@ -91,7 +91,7 @@ func CopyFileGroup[T ~string](locators []T, writers []io.Writer, funcs ...fnOpt)
 	t := throttler.New(4, len(cloneList))
 	for repostring, copyplan := range cloneList {
 		go func(repostring string, copyplan *copyPlan) {
-			fsobj, err := CloneRepository(copyplan.Locator)
+			fsobj, err := CloneRepository(copyplan.Locator, funcs...)
 			mutex.Lock()
 			cloneList[repostring].FS = fsobj
 			mutex.Unlock()
