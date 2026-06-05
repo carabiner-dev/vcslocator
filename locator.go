@@ -268,8 +268,15 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 		}
 	}
 
-	// Make a shallow clone of the repo to memory
-	repo, err := git.Clone(memory.NewStorage(), fsobj, &git.CloneOptions{
+	// When no branch or tag was requested but we have a ref to resolve
+	// ourselves (e.g. git notes), the default branch is only cloned to
+	// bootstrap the repository: we never read its contents, we fetch and
+	// check out the target ref below. In that case clone shallowly and skip
+	// the checkout so we don't transfer the entire default-branch history,
+	// which is very expensive on large repositories.
+	resolveRefLater := reference == "" && components.Commit == "" && components.RefString != ""
+
+	cloneOpts := &git.CloneOptions{
 		URL:  repourl,
 		Auth: auth,
 		// Progress:      os.Stdout,
@@ -277,7 +284,14 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 		SingleBranch:  true,
 		// RecurseSubmodules: 0,
 		// ShallowSubmodules: false,
-	})
+	}
+	if resolveRefLater {
+		cloneOpts.Depth = 1
+		cloneOpts.NoCheckout = true
+	}
+
+	// Make a (possibly shallow) clone of the repo to memory
+	repo, err := git.Clone(memory.NewStorage(), fsobj, cloneOpts)
 	if err != nil {
 		return nil, fmt.Errorf("cloning repo: %w", err)
 	}
@@ -294,6 +308,7 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 			// changes the ref string from refs/notes/commits to refs/heads/notes/commits
 			//
 			if err := repo.Fetch(&git.FetchOptions{
+				Auth: auth,
 				RefSpecs: []config.RefSpec{
 					config.RefSpec(fmt.Sprintf("%s:%s", components.RefString, components.RefString)),
 				},
