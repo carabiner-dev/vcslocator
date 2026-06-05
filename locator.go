@@ -268,52 +268,69 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 		}
 	}
 
-	// Make a shallow clone of the repo to memory
-	repo, err := git.Clone(memory.NewStorage(), fsobj, &git.CloneOptions{
-		URL:  repourl,
-		Auth: auth,
-		// Progress:      os.Stdout,
-		ReferenceName: reference,
-		SingleBranch:  true,
-		// RecurseSubmodules: 0,
-		// ShallowSubmodules: false,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("cloning repo: %w", err)
+	// When no branch or tag was requested but we have a ref to resolve
+	// ourselves (e.g. for git notes), we don't need the default branch at all.
+	//
+	// Cloning it (even shallow) transfers the entire worktree at HEAD which
+	// is very expensive on large repos.
+	//
+	// Instead we initialize an empty repo and shallow fetch only the target
+	// ref, then resolve and check out the commit it points.
+	resolveRefLater := reference == "" && components.Commit == "" && components.RefString != ""
+
+	var repo *git.Repository
+	if resolveRefLater {
+		repo, err = git.Init(memory.NewStorage(), fsobj)
+		if err != nil {
+			return nil, fmt.Errorf("initializing repo: %w", err)
+		}
+
+		if _, err = repo.CreateRemote(&config.RemoteConfig{
+			Name: "origin",
+			URLs: []string{repourl},
+		}); err != nil {
+			return nil, fmt.Errorf("creating remote: %w", err)
+		}
+
+		// Fetch only the target ref (e.g. refs/notes/commits).
+		if err = repo.Fetch(&git.FetchOptions{
+			Auth:  auth,
+			Depth: 1,
+			RefSpecs: []config.RefSpec{
+				config.RefSpec(fmt.Sprintf("%s:%s", components.RefString, components.RefString)),
+			},
+		}); err != nil {
+			return nil, fmt.Errorf("fetching ref %q: %w", components.RefString, err)
+		}
+	} else {
+		// Make a clone of the repo to memory
+		repo, err = git.Clone(memory.NewStorage(), fsobj, &git.CloneOptions{
+			URL:  repourl,
+			Auth: auth,
+			// Progress:      os.Stdout,
+			ReferenceName: reference,
+			SingleBranch:  true,
+			// RecurseSubmodules: 0,
+			// ShallowSubmodules: false,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("cloning repo: %w", err)
+		}
 	}
 
 	commitHash := components.Commit
-	// Here we handle commits and other references (not tags or branches)
-	if reference == "" && components.Commit == "" {
-		// But also ensuring we are note refetching a previous commit
-		if components.RefString != "" && components.RefString != components.Commit {
-			// Since this ref was not fetched at clone time, we do a fetch here
-			// to make sure it is available. This is especially important for
-			// git notes that are never transferred by default and cannot be
-			// fetched at clone time, I thing because of a bug that somewhere
-			// changes the ref string from refs/notes/commits to refs/heads/notes/commits
-			//
-			if err := repo.Fetch(&git.FetchOptions{
-				RefSpecs: []config.RefSpec{
-					config.RefSpec(fmt.Sprintf("%s:%s", components.RefString, components.RefString)),
-				},
-			}); err != nil {
-				return nil, fmt.Errorf("late fetching ref %q: %w", components.RefString, err)
-			}
-
-			// Resolve the reference, it should not fail as we fetched it already
-			ref, err := repo.Reference(plumbing.ReferenceName(components.RefString), true)
-			if err != nil {
-				return nil, fmt.Errorf("resolving reference %q: %w", components.RefString, err)
-			}
-
-			// Resolve the reference to a commit hash
-			hach, err := repo.ResolveRevision(plumbing.Revision(ref.Name().String()))
-			if err != nil {
-				return nil, fmt.Errorf("resolving latest revision on %q to commit: %w", ref.Name().String(), err)
-			}
-			commitHash = hach.String()
+	// Resolve the ref we fetched ourselves (eg git notes) to a commit hash.
+	if resolveRefLater {
+		ref, err := repo.Reference(plumbing.ReferenceName(components.RefString), true)
+		if err != nil {
+			return nil, fmt.Errorf("resolving reference %q: %w", components.RefString, err)
 		}
+
+		hach, err := repo.ResolveRevision(plumbing.Revision(ref.Name().String()))
+		if err != nil {
+			return nil, fmt.Errorf("resolving latest revision on %q to commit: %w", ref.Name().String(), err)
+		}
+		commitHash = hach.String()
 	}
 
 	// If a revision was specified, check it out
