@@ -38,7 +38,10 @@ const (
 	ToolGit = "git"
 )
 
-var sha1Regex, sha1ShortRegex *regexp.Regexp
+var (
+	sha1Regex      = regexp.MustCompile(sha1Pattern)
+	sha1ShortRegex = regexp.MustCompile(sha1ShortPattern)
+)
 
 // Locator is a type that wraps a VCS locator string to add functionality to it.
 type Locator string
@@ -82,7 +85,7 @@ func (l Locator) LocalPath(funcs ...fnOpt) (string, error) {
 
 const slugRegexPattern = `^[-A-Za-z0-9_]+/[-A-Za-z0-9_]+$`
 
-var slugRegex *regexp.Regexp
+var slugRegex = regexp.MustCompile(slugRegexPattern)
 
 // Parse a VCS locator and returns its components
 func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
@@ -111,9 +114,6 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 	}
 
 	// Here, we detect if we are dealing with a github repo slug:
-	if slugRegex == nil {
-		slugRegex = regexp.MustCompile(slugRegexPattern)
-	}
 	// .. we ONLY treat is a such if there is no hostname, no scheme and....
 	if u.Hostname() == "" && u.Scheme == "" && u.Path != "" {
 		path, ref, _ := strings.Cut(u.Path, "@")
@@ -188,11 +188,6 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 //
 //	// TODO(puerco): Ensure this follows `man gitrevisions` > SPECIFYING REVISIONS
 func parseRefString(ref string, opts *options) (tag, branch, commitSha string) {
-	if sha1Regex == nil || sha1ShortRegex == nil {
-		sha1Regex = regexp.MustCompile(sha1Pattern)
-		sha1ShortRegex = regexp.MustCompile(sha1ShortPattern)
-	}
-
 	// If the ref looks like a commit, we treat it as such. Other reference
 	// types can be addressed by specifying the full path string (ie refs/tags/XX).
 	if sha1Regex.MatchString(ref) || sha1ShortRegex.MatchString(ref) {
