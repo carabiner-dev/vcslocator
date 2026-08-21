@@ -121,8 +121,8 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 		if slugRegex.MatchString(path) {
 			tag, branch, commitSha := parseRefString(ref, &opts)
 			return &Components{
-				Tool:      "git",
-				Transport: "https",
+				Tool:      ToolGit,
+				Transport: TransportHTTPS,
 				Hostname:  "github.com",
 				RepoPath:  path,
 				RefString: ref,
@@ -141,7 +141,7 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 	// Synth the file schema to capture all into the path early
 	if transportIsFile {
 		transp = TransportFile
-		tool = "git"
+		tool = ToolGit
 		si = true
 	}
 
@@ -224,7 +224,7 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 		return nil, fmt.Errorf("parsing locator: %w", err)
 	}
 
-	if components.Tool != "git" {
+	if components.Tool != ToolGit {
 		return nil, errors.New("only git locators are supported for cloning")
 	}
 
@@ -475,7 +475,7 @@ func remoteURLToLocator(rawURL, ref string) (string, error) {
 	path := strings.TrimSuffix(strings.TrimPrefix(u.Path, "/"), ".git")
 
 	switch u.Scheme {
-	case "https", "http":
+	case TransportHTTPS, "http":
 		return fmt.Sprintf("git+https://%s/%s@%s", u.Hostname(), path, ref), nil
 	case "ssh":
 		return fmt.Sprintf("git+ssh://%s/%s@%s", u.Hostname(), path, ref), nil
