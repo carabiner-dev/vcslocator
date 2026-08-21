@@ -24,7 +24,7 @@ type Components struct {
 // RepoURL forms the repository URL to clone based on the defined components
 func (c *Components) RepoURL() string {
 	switch c.Transport {
-	case "https", "":
+	case TransportHTTPS, "":
 		return fmt.Sprintf("https://%s/%s", c.Hostname, strings.TrimPrefix(c.RepoPath, "/"))
 	case "ssh":
 		return fmt.Sprintf("git@%s:%s", c.Hostname, strings.TrimPrefix(c.RepoPath, "/"))
