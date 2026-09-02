@@ -129,7 +129,7 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 				Tag:       tag,
 				Branch:    branch,
 				Commit:    commitSha,
-				SubPath:   u.Fragment,
+				SubPath:   strings.TrimPrefix(u.Fragment, "/"),
 			}, nil
 		}
 	}
@@ -179,7 +179,7 @@ func (l Locator) Parse(funcs ...fnOpt) (*Components, error) {
 		Tag:       tag,
 		Branch:    branch,
 		Commit:    commitSha,
-		SubPath:   u.Fragment,
+		SubPath:   strings.TrimPrefix(u.Fragment, "/"),
 	}, nil
 }
 
@@ -234,7 +234,7 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 
 	// Create the locator and parse
 	l := Locator(locator)
-	components, err := l.Parse()
+	components, err := l.Parse(funcs...)
 	if err != nil {
 		return nil, fmt.Errorf("parsing locator: %w", err)
 	}
@@ -261,18 +261,16 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 		fsobj = osfs.New(opts.ClonePath)
 	}
 
-	// Handle cloning from repos with file: transport.
-	// We pass the full file:// URL to go-git so it uses local transport.
-	// Passing a bare path can cause go-git to misinterpret it (e.g. on
-	// Windows, D:/path looks like an SCP-style SSH URL host:path).
+	// For the file transport RepoURL returns the full file:// URL so that
+	// go-git uses the local transport. Passing a bare path can cause go-git
+	// to misinterpret it (e.g. on Windows, D:/path looks like an SCP-style
+	// SSH URL host:path).
 	repourl := components.RepoURL()
-	if components.Transport == "file" {
-		repourl = "file://" + components.RepoPath
-	}
 
+	// Resolve the credentials from the options, if enabled
 	var auth transport.AuthMethod
-	if opts.ReadCredentials && components.Transport != TransportFile {
-		auth, err = GetAuthMethod(l)
+	if opts.ReadCredentials {
+		auth, err = authForTransport(components.Transport, &opts)
 		if err != nil {
 			return nil, fmt.Errorf("getting git auth method: %w", err)
 		}
@@ -345,13 +343,19 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 
 	// If a revision was specified, check it out
 	if commitHash != "" {
+		// Resolve the revision to its full hash, this expands short shas
+		hash, err := repo.ResolveRevision(plumbing.Revision(commitHash))
+		if err != nil {
+			return nil, fmt.Errorf("resolving commit %s: %w", commitHash, err)
+		}
+
 		wt, err := repo.Worktree()
 		if err != nil {
 			return nil, fmt.Errorf("getting repository worktree: %w", err)
 		}
 
 		if err = wt.Checkout(&git.CheckoutOptions{
-			Hash: plumbing.NewHash(commitHash),
+			Hash: *hash,
 		}); err != nil {
 			return nil, fmt.Errorf("checking out commit %s: %w", commitHash, err)
 		}

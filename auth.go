@@ -28,18 +28,22 @@ func GetAuthMethod[T ~string](locator T, funcs ...fnOpt) (transport.AuthMethod, 
 	}
 
 	l := Locator(locator)
-	components, err := l.Parse()
+	components, err := l.Parse(funcs...)
 	if err != nil {
 		return nil, err
 	}
 
-	switch components.Transport {
+	return authForTransport(components.Transport, &opts)
+}
+
+// authForTransport returns the auth method for a transport using the
+// credentials configured in the options. Local file:// repos need none.
+func authForTransport(transp string, opts *options) (transport.AuthMethod, error) {
+	switch transp {
 	case TransportSSH:
 		return getSSHAuth()
 	case TransportHTTPS:
-		return getHTTPAuth(&opts), nil
-	case TransportFile:
-		return nil, nil // No auth needed for local file:// repos
+		return getHTTPAuth(opts), nil
 	default:
 		return nil, nil
 	}

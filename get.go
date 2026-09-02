@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -96,9 +95,9 @@ func CopyFileGroup[T ~string](locators []T, writers []io.Writer, funcs ...fnOpt)
 	cloneList := map[string]*copyPlan{}
 	for i, l := range locators {
 		// Parse the locator
-		components, err := Locator(l).Parse()
+		components, err := Locator(l).Parse(funcs...)
 		if err != nil {
-			return fmt.Errorf("error parsing locator %d", i)
+			return fmt.Errorf("parsing locator %d: %w", i, err)
 		}
 
 		repostring := fmt.Sprintf("%s:%s", components.RepoURL(), components.RefString)
@@ -231,17 +230,19 @@ func Download[T ~string](locator T, localDir string, funcs ...fnOpt) error {
 		return fmt.Errorf("cloning repository: %w", err)
 	}
 
-	// Walk the filesystem to fetch all we need
+	// Walk the filesystem to fetch all we need: the file at the subpath
+	// or, if it is a directory, everything under it.
+	subpath := strings.TrimSuffix(components.SubPath, "/")
 	if err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("walking repository files: %w", err)
 		}
 
 		if d.IsDir() {
 			return nil
 		}
 
-		if !strings.HasPrefix(path, strings.TrimPrefix(components.SubPath, "/")) {
+		if path != subpath && !strings.HasPrefix(path, subpath+"/") {
 			return nil
 		}
 

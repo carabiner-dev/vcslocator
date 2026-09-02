@@ -314,3 +314,127 @@ func TestCopyFileGroupNotes(t *testing.T) {
 	require.Empty(t, shard.String())
 	require.Equal(t, "the note", flat.String())
 }
+
+// addBranch creates a branch with one extra file committed on it and
+// returns to the previous branch.
+func addBranch(t *testing.T, repoDir, branch, file, content string) {
+	t.Helper()
+	repo, err := git.PlainOpen(repoDir)
+	require.NoError(t, err)
+	head, err := repo.Head()
+	require.NoError(t, err)
+	wt, err := repo.Worktree()
+	require.NoError(t, err)
+
+	require.NoError(t, wt.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName(branch), Create: true,
+	}))
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, file), []byte(content), 0o600))
+	_, err = wt.Add(file)
+	require.NoError(t, err)
+	_, err = wt.Commit("branch commit", &git.CommitOptions{
+		Author: &object.Signature{Name: "test", Email: "test@test.com", When: time.Now()},
+	})
+	require.NoError(t, err)
+	require.NoError(t, wt.Checkout(&git.CheckoutOptions{Branch: head.Name()}))
+}
+
+func TestCloneOptionsAreHonored(t *testing.T) {
+	t.Parallel()
+	noAuth := WithSystemCredentials(false)
+	repoDir, commitHash := initTestRepoWithFiles(t, map[string]string{"hello.txt": "hello"})
+	addBranch(t, repoDir, "feature", "feature.txt", "on feature")
+
+	t.Run("ref as branch", func(t *testing.T) {
+		t.Parallel()
+		var buf bytes.Buffer
+		locator := fileLocator(repoDir, "feature", "feature.txt")
+
+		// By default the ref is a tag, which does not exist
+		require.ErrorIs(t, CopyFile(locator, &buf, noAuth), ErrRefNotFound)
+
+		require.NoError(t, CopyFile(locator, &buf, noAuth, WithRefAsBranch(true)))
+		require.Equal(t, "on feature", buf.String())
+
+		buf.Reset()
+		require.NoError(t, CopyFileGroup([]string{locator}, []io.Writer{&buf}, noAuth, WithRefAsBranch(true)))
+		require.Equal(t, "on feature", buf.String())
+	})
+
+	t.Run("short commit sha", func(t *testing.T) {
+		t.Parallel()
+		var buf bytes.Buffer
+		require.NoError(t, CopyFile(fileLocator(repoDir, commitHash[0:7], "hello.txt"), &buf, noAuth))
+		require.Equal(t, "hello", buf.String())
+	})
+
+	t.Run("subpath with leading slash", func(t *testing.T) {
+		t.Parallel()
+		var buf bytes.Buffer
+		require.NoError(t, CopyFile(fileLocator(repoDir, commitHash, "/hello.txt"), &buf, noAuth))
+		require.Equal(t, "hello", buf.String())
+	})
+
+	t.Run("http credentials reach the clone auth", func(t *testing.T) {
+		t.Parallel()
+		opts := defaultOptions
+		require.NoError(t, WithHttpAuth("user", "secret")(&opts))
+		auth, err := authForTransport(TransportHTTPS, &opts)
+		require.NoError(t, err)
+		require.Equal(t, "http-basic-auth", auth.Name())
+
+		auth, err = authForTransport(TransportFile, &opts)
+		require.NoError(t, err)
+		require.Nil(t, auth)
+
+		auth, err = authForTransport(TransportHTTPS, &defaultOptions)
+		require.NoError(t, err)
+		require.Nil(t, auth)
+	})
+}
+
+func TestCopyFileGroupSeparatesLocalRepos(t *testing.T) {
+	t.Parallel()
+	noAuth := WithSystemCredentials(false)
+	repoA, shaA := initTestRepoWithFiles(t, map[string]string{"file.txt": "from A"})
+	repoB, shaB := initTestRepoWithFiles(t, map[string]string{"file.txt": "from B"})
+
+	// Two local repos read at the same ref must not share a clone
+	var a, b bytes.Buffer
+	require.NoError(t, CopyFileGroup([]string{
+		fileLocator(repoA, "refs/heads/master", "file.txt"),
+		fileLocator(repoB, "refs/heads/master", "file.txt"),
+	}, []io.Writer{&a, &b}, noAuth))
+	require.Equal(t, "from A", a.String())
+	require.Equal(t, "from B", b.String())
+
+	components, err := Locator(fileLocator(repoA, shaA, "file.txt")).Parse()
+	require.NoError(t, err)
+	require.Equal(t, "file://"+components.RepoPath, components.RepoURL())
+	require.NotEqual(t, shaA, shaB)
+
+	// Parse failures name the locator and keep the cause
+	err = CopyFileGroup([]string{"://invalid"}, []io.Writer{&a}, noAuth)
+	require.ErrorContains(t, err, "parsing locator 0")
+	require.ErrorContains(t, err, "missing protocol scheme")
+}
+
+func TestDownloadSubpathBoundary(t *testing.T) {
+	t.Parallel()
+	noAuth := WithSystemCredentials(false)
+	repoDir, commitHash := initTestRepoWithFiles(t, map[string]string{
+		"go/pred/inside.txt":      "inside",
+		"go/predicates/other.txt": "sibling with the same prefix",
+		"go/pred-other/other.txt": "another sibling",
+	})
+
+	for _, sub := range []string{"go/pred", "go/pred/", "/go/pred"} {
+		destDir := t.TempDir()
+		require.NoError(t, Download(fileLocator(repoDir, commitHash, sub), destDir, noAuth), sub)
+		content, err := os.ReadFile(filepath.Join(destDir, "go", "pred", "inside.txt"))
+		require.NoError(t, err, sub)
+		require.Equal(t, "inside", string(content), sub)
+		require.NoFileExists(t, filepath.Join(destDir, "go", "predicates", "other.txt"), sub)
+		require.NoFileExists(t, filepath.Join(destDir, "go", "pred-other", "other.txt"), sub)
+	}
+}
