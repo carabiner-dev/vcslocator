@@ -5,13 +5,18 @@ package vcslocator
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/stretchr/testify/require"
 )
@@ -189,4 +194,123 @@ func TestDownload(t *testing.T) {
 		err := Download("://invalid", destDir, noAuth)
 		require.Error(t, err)
 	})
+}
+
+// addNote stores content as the git note of commitHash in the repository at
+// repoDir, creating the notes reference if needed.
+func addNote(t *testing.T, repoDir, commitHash, content string) {
+	t.Helper()
+	repo, err := git.PlainOpen(repoDir)
+	require.NoError(t, err)
+
+	blob := repo.Storer.NewEncodedObject()
+	blob.SetType(plumbing.BlobObject)
+	w, err := blob.Writer()
+	require.NoError(t, err)
+	_, err = w.Write([]byte(content))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+	blobHash, err := repo.Storer.SetEncodedObject(blob)
+	require.NoError(t, err)
+
+	tree := &object.Tree{Entries: []object.TreeEntry{
+		{Name: commitHash, Mode: filemode.Regular, Hash: blobHash},
+	}}
+	treeObj := repo.Storer.NewEncodedObject()
+	require.NoError(t, tree.Encode(treeObj))
+	treeHash, err := repo.Storer.SetEncodedObject(treeObj)
+	require.NoError(t, err)
+
+	sig := object.Signature{Name: "test", Email: "test@test.com", When: time.Now()}
+	commit := &object.Commit{Author: sig, Committer: sig, Message: "Notes added by test", TreeHash: treeHash}
+	commitObj := repo.Storer.NewEncodedObject()
+	require.NoError(t, commit.Encode(commitObj))
+	notesHash, err := repo.Storer.SetEncodedObject(commitObj)
+	require.NoError(t, err)
+
+	require.NoError(t, repo.Storer.SetReference(
+		plumbing.NewHashReference(plumbing.ReferenceName("refs/notes/commits"), notesHash),
+	))
+}
+
+func TestErrorListUnwrap(t *testing.T) {
+	t.Parallel()
+	inner := errors.New("inner failure")
+	list := &ErrorList{Errors: []error{nil, fmt.Errorf("locator 1: %w", inner), nil}}
+	wrapped := fmt.Errorf("outer: %w", list)
+
+	require.ErrorIs(t, wrapped, inner)
+	require.NotErrorIs(t, wrapped, ErrRefNotFound)
+	require.Len(t, list.Unwrap(), 1)
+	require.Equal(t, "locator 1: inner failure", list.Error())
+
+	var found *ErrorList
+	require.ErrorAs(t, wrapped, &found)
+	require.Len(t, found.Errors, 3)
+}
+
+func TestCloneRepositoryMissingRef(t *testing.T) {
+	t.Parallel()
+	noAuth := WithSystemCredentials(false)
+	repoDir, commitHash := initTestRepoWithFiles(t, map[string]string{"hello.txt": "hello"})
+
+	for _, tc := range []struct {
+		name string
+		ref  string
+	}{
+		{"missing notes ref", "refs/notes/commits"},
+		{"missing branch", "refs/heads/nope"},
+		{"missing tag", "refs/tags/nope"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := CloneRepository(fileLocator(repoDir, tc.ref, "hello.txt"), noAuth)
+			require.ErrorIs(t, err, ErrRefNotFound)
+		})
+	}
+
+	t.Run("existing ref", func(t *testing.T) {
+		t.Parallel()
+		_, err := CloneRepository(fileLocator(repoDir, commitHash, "hello.txt"), noAuth)
+		require.NoError(t, err)
+	})
+}
+
+// TestCopyFileGroupNotes reads a commit note the way the attestation
+// collectors do: one locator for the sharded path and one for the flat
+// path, before and after the notes reference exists.
+func TestCopyFileGroupNotes(t *testing.T) {
+	t.Parallel()
+	noAuth := WithSystemCredentials(false)
+	repoDir, commitHash := initTestRepoWithFiles(t, map[string]string{"hello.txt": "hello"})
+	locators := []string{
+		fileLocator(repoDir, "refs/notes/commits", commitHash[0:2]+"/"+commitHash[2:]),
+		fileLocator(repoDir, "refs/notes/commits", commitHash),
+	}
+
+	// Without a notes reference the clone fails and every locator reports it
+	var shard, flat bytes.Buffer
+	err := CopyFileGroup(locators, []io.Writer{&shard, &flat}, noAuth)
+	require.ErrorIs(t, err, ErrRefNotFound)
+	var list *ErrorList
+	require.ErrorAs(t, err, &list)
+	require.Len(t, list.Errors, 2)
+	for _, e := range list.Errors {
+		require.ErrorIs(t, e, ErrRefNotFound)
+	}
+
+	// With a note, the flat locator returns it and the sharded path is
+	// reported as missing, which callers can check with errors.Is
+	addNote(t, repoDir, commitHash, "the note")
+	shard.Reset()
+	flat.Reset()
+	err = CopyFileGroup(locators, []io.Writer{&shard, &flat}, noAuth)
+	require.ErrorIs(t, err, fs.ErrNotExist)
+	require.NotErrorIs(t, err, ErrRefNotFound)
+	require.ErrorAs(t, err, &list)
+	require.Len(t, list.Errors, 2)
+	require.ErrorIs(t, list.Errors[0], fs.ErrNotExist)
+	require.NoError(t, list.Errors[1])
+	require.Empty(t, shard.String())
+	require.Equal(t, "the note", flat.String())
 }

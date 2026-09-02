@@ -18,6 +18,10 @@ import (
 	"github.com/nozzle/throttler"
 )
 
+// ErrorList collects the errors of a group operation. It has one entry per
+// locator, in the order they were passed, with nil entries for the locators
+// that succeeded. The list can be inspected with errors.Is and errors.As.
+//
 //nolint:errname // This is not an Error type
 type ErrorList struct {
 	Errors []error
@@ -28,6 +32,28 @@ func (el *ErrorList) Error() string {
 		return err.Error()
 	}
 	return ""
+}
+
+// Unwrap returns the errors in the list, skipping the nil entries, so that
+// errors.Is and errors.As can see through the list.
+func (el *ErrorList) Unwrap() []error {
+	errs := make([]error, 0, len(el.Errors))
+	for _, err := range el.Errors {
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errs
+}
+
+// newErrorList builds an ErrorList for total locators from the errors of
+// those that failed, indexed by their position.
+func newErrorList(total int, errs map[int]error) *ErrorList {
+	ret := make([]error, total)
+	for i, err := range errs {
+		ret[i] = err
+	}
+	return &ErrorList{Errors: ret}
 }
 
 type copyPlan struct {
@@ -86,25 +112,30 @@ func CopyFileGroup[T ~string](locators []T, writers []io.Writer, funcs ...fnOpt)
 		cloneList[repostring].Files[i] = components.SubPath
 	}
 
-	// Clone them repos
+	// Clone them repos. Clone failures are recorded for every locator read
+	// from the failed clone so that the error list reports one entry per
+	// locator, as the copy phase below does.
 	var mutex sync.Mutex
+	cloneErrs := map[int]error{}
 	t := throttler.New(4, len(cloneList))
 	for repostring, copyplan := range cloneList {
 		go func(repostring string, copyplan *copyPlan) {
 			fsobj, err := CloneRepository(copyplan.Locator, funcs...)
 			mutex.Lock()
 			cloneList[repostring].FS = fsobj
-			mutex.Unlock()
 			if err != nil {
-				err = fmt.Errorf("reading %q: %w", copyplan.Locator, err)
+				for i := range copyplan.Files {
+					cloneErrs[i] = fmt.Errorf("reading %q: %w", copyplan.Locator, err)
+				}
 			}
+			mutex.Unlock()
 			t.Done(err)
 		}(repostring, copyplan)
 		t.Throttle()
 	}
 
-	if err := t.Err(); err != nil {
-		return fmt.Errorf("error cloning repositories: %w", err)
+	if len(cloneErrs) != 0 {
+		return fmt.Errorf("error cloning repositories: %w", newErrorList(len(locators), cloneErrs))
 	}
 
 	// Now copy the files in parallel
@@ -137,17 +168,7 @@ func CopyFileGroup[T ~string](locators []T, writers []io.Writer, funcs ...fnOpt)
 	}
 
 	if len(errs) != 0 {
-		ret := []error{}
-		for i := range locators {
-			if err, ok := errs[i]; ok {
-				ret = append(ret, err)
-			} else {
-				ret = append(ret, nil)
-			}
-		}
-		return &ErrorList{
-			Errors: ret,
-		}
+		return newErrorList(len(locators), errs)
 	}
 	return nil
 }
