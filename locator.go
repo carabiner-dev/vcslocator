@@ -208,6 +208,21 @@ func parseRefString(ref string, opts *options) (tag, branch, commitSha string) {
 	return tag, branch, commitSha
 }
 
+// ErrRefNotFound is returned when the git reference a locator points to
+// does not exist in the repository, for example the notes reference of a
+// repository that has no notes yet. It can be checked with errors.Is on the
+// errors returned by the clone and copy functions.
+var ErrRefNotFound = errors.New("reference not found in repository")
+
+// refError wraps the errors go-git returns when a reference is missing
+// from the repository with ErrRefNotFound. Other errors are returned as is.
+func refError(err error) error {
+	if errors.Is(err, git.NoMatchingRefSpecError{}) || errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return fmt.Errorf("%w: %w", ErrRefNotFound, err)
+	}
+	return err
+}
+
 // CloneRepository clones the repository defined by the locator to a path.
 func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 	opts := defaultOptions
@@ -295,7 +310,7 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 				config.RefSpec(fmt.Sprintf("%s:%s", components.RefString, components.RefString)),
 			},
 		}); err != nil {
-			return nil, fmt.Errorf("fetching ref %q: %w", components.RefString, err)
+			return nil, fmt.Errorf("fetching ref %q: %w", components.RefString, refError(err))
 		}
 	} else {
 		// Make a clone of the repo to memory
@@ -309,7 +324,7 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 			// ShallowSubmodules: false,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("cloning repo: %w", err)
+			return nil, fmt.Errorf("cloning repo: %w", refError(err))
 		}
 	}
 
