@@ -26,8 +26,12 @@ func (c *Components) RepoURL() string {
 	switch c.Transport {
 	case TransportHTTPS, "":
 		return fmt.Sprintf("https://%s/%s", c.Hostname, strings.TrimPrefix(c.RepoPath, "/"))
-	case "ssh":
+	case TransportSSH:
 		return fmt.Sprintf("git@%s:%s", c.Hostname, strings.TrimPrefix(c.RepoPath, "/"))
+	case TransportFile:
+		// The path keeps its leading slash (or slash + drive letter on
+		// Windows) so the URL is always file:///path.
+		return TransportFile + "://" + c.RepoPath
 	default:
 		return ""
 	}
