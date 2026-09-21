@@ -63,14 +63,14 @@ type copyPlan struct {
 }
 
 // GetGroup gets the data of several vcs locators in an efficient manner
-func GetGroup[T ~string](locators []T) ([][]byte, error) {
+func GetGroup[T ~string](locators []T, funcs ...fnOpt) ([][]byte, error) {
 	buffers := make([]io.Writer, len(locators))
 	for i := range locators {
 		var b bytes.Buffer
 		buffers[i] = &b
 	}
 
-	if err := CopyFileGroup(locators, buffers); err != nil {
+	if err := CopyFileGroup(locators, buffers, funcs...); err != nil {
 		return nil, err
 	}
 

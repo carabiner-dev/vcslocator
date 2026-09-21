@@ -5,6 +5,7 @@ package vcslocator
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -437,4 +438,64 @@ func TestDownloadSubpathBoundary(t *testing.T) {
 		require.NoFileExists(t, filepath.Join(destDir, "go", "predicates", "other.txt"), sub)
 		require.NoFileExists(t, filepath.Join(destDir, "go", "pred-other", "other.txt"), sub)
 	}
+}
+
+// TestWithContext proves the context option reaches the clone behind every
+// copy entry point: a cancelled context fails with context.Canceled before the
+// remote is contacted, while a live context leaves the call working.
+func TestWithContext(t *testing.T) {
+	t.Parallel()
+
+	noAuth := WithSystemCredentials(false)
+	repoDir, commitHash := initTestRepoWithFiles(t, map[string]string{"hello.txt": "hello"})
+	local := fileLocator(repoDir, commitHash, "hello.txt")
+
+	// An unreachable remote: any error other than the context's own means
+	// the context never reached the clone.
+	remote := "git+https://127.0.0.1:1/org/repo@" + commitHash + "#hello.txt"
+
+	live := t.Context()
+	cancelled, cancel := context.WithCancel(live)
+	cancel()
+
+	for name, call := range map[string]func(locator string, opts ...fnOpt) error{
+		"CloneRepository": func(locator string, opts ...fnOpt) error {
+			_, err := CloneRepository(locator, opts...)
+
+			return err
+		},
+		"CopyFile": func(locator string, opts ...fnOpt) error {
+			return CopyFile(locator, io.Discard, opts...)
+		},
+		"CopyFileGroup": func(locator string, opts ...fnOpt) error {
+			return CopyFileGroup([]string{locator}, []io.Writer{io.Discard}, opts...)
+		},
+		"GetGroup": func(locator string, opts ...fnOpt) error {
+			_, err := GetGroup([]string{locator}, opts...)
+
+			return err
+		},
+		"Download": func(locator string, opts ...fnOpt) error {
+			return Download(locator, t.TempDir(), opts...)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			require.ErrorIs(t, call(remote, noAuth, WithContext(cancelled)), context.Canceled)
+			require.NoError(t, call(local, noAuth, WithContext(live)))
+		})
+	}
+}
+
+// TestWithContextRejectsNil proves a nil context is refused at option time
+// rather than panicking deep inside go-git.
+func TestWithContextRejectsNil(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	//nolint:staticcheck // passing a nil context on purpose
+	err := CopyFile("git+https://github.com/org/repo#file", &buf, WithContext(nil))
+	require.ErrorContains(t, err, "context is nil")
 }

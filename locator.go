@@ -301,7 +301,7 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 		}
 
 		// Fetch only the target ref (e.g. refs/notes/commits).
-		if err = repo.Fetch(&git.FetchOptions{
+		if err = repo.FetchContext(opts.context(), &git.FetchOptions{
 			Auth:  auth,
 			Depth: 1,
 			RefSpecs: []config.RefSpec{
@@ -312,7 +312,7 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 		}
 	} else {
 		// Make a clone of the repo to memory
-		repo, err = git.Clone(memory.NewStorage(), fsobj, &git.CloneOptions{
+		repo, err = git.CloneContext(opts.context(), memory.NewStorage(), fsobj, &git.CloneOptions{
 			URL:  repourl,
 			Auth: auth,
 			// Progress:      os.Stdout,
