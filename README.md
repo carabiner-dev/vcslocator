@@ -95,6 +95,19 @@ if err := vcslocator.Download(dirlocator, "mydir/"); err != nil {
 }
 ```
 
+All copy and download functions take functional options. `WithContext` bounds
+the clone or fetch behind the call with a context, so it can be cancelled or
+given a deadline:
+
+```golang
+ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+defer cancel()
+
+if err := vcslocator.CopyFile(filelocator, os.Stdout, vcslocator.WithContext(ctx)); err != nil {
+    // errors.Is(err, context.DeadlineExceeded) when the minute ran out
+}
+```
+
 ## Install
 
 To install simply `go get` the module into your project:

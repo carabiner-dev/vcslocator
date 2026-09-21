@@ -4,6 +4,7 @@
 package vcslocator
 
 import (
+	"context"
 	"errors"
 )
 
@@ -23,6 +24,20 @@ type options struct {
 	// TopLevelPath sets the uppermost directory to search when walking up the
 	// filesystem looking for a git repository. Defaults to the filesystem root.
 	TopLevelPath string
+
+	// Context bounds the network operations (clones and fetches) of a single
+	// call. The options struct only lives for that call, so the context is
+	// never retained beyond it.
+	Context context.Context //nolint:containedctx // per-call functional option
+}
+
+// context returns the configured context or a background one when none is set.
+func (o *options) context() context.Context {
+	if o.Context == nil {
+		return context.Background()
+	}
+
+	return o.Context
 }
 
 var defaultOptions = options{
@@ -78,6 +93,25 @@ func WithTopLevelPath(path string) fnOpt {
 			return errors.New("options are nil")
 		}
 		o.TopLevelPath = path
+		return nil
+	}
+}
+
+// WithContext bounds the network operations of the call with a context.
+// Cancelling the context or reaching its deadline aborts the clone or fetch
+// in flight and the call returns the context error.
+func WithContext(ctx context.Context) fnOpt {
+	return func(o *options) error {
+		if o == nil {
+			return errors.New("options are nil")
+		}
+
+		if ctx == nil {
+			return errors.New("context is nil")
+		}
+
+		o.Context = ctx
+
 		return nil
 	}
 }
