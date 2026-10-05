@@ -3,7 +3,7 @@ module github.com/carabiner-dev/vcslocator
 go 1.25.12
 
 require (
-	github.com/go-git/go-billy/v5 v5.9.1
+	github.com/go-git/go-billy/v5 v5.9.2
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/nozzle/throttler v0.0.0-20180817012639-2ea982251481
 	github.com/stretchr/testify v1.12.1
