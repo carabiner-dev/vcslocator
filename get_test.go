@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-git/go-billy/v5/memfs"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"
@@ -498,4 +499,151 @@ func TestWithContextRejectsNil(t *testing.T) {
 	//nolint:staticcheck // passing a nil context on purpose
 	err := CopyFile("git+https://github.com/org/repo#file", &buf, WithContext(nil))
 	require.ErrorContains(t, err, "context is nil")
+}
+
+// addCommit commits a new version of a file on the current branch and
+// returns the hash of the commit.
+func addCommit(t *testing.T, repoDir, file, content string) string {
+	t.Helper()
+	repo, err := git.PlainOpen(repoDir)
+	require.NoError(t, err)
+	wt, err := repo.Worktree()
+	require.NoError(t, err)
+
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, file), []byte(content), 0o600))
+	_, err = wt.Add(file)
+	require.NoError(t, err)
+	hash, err := wt.Commit("another commit", &git.CommitOptions{
+		Author: &object.Signature{Name: "test", Email: "test@test.com", When: time.Now()},
+	})
+	require.NoError(t, err)
+
+	return hash.String()
+}
+
+// allowFetchingCommits configures a repository to serve the commits its
+// references lead to when they are requested by hash, as GitHub does. A git
+// server refuses those requests by default.
+func allowFetchingCommits(t *testing.T, repoDir string) {
+	t.Helper()
+	repo, err := git.PlainOpen(repoDir)
+	require.NoError(t, err)
+	cfg, err := repo.Config()
+	require.NoError(t, err)
+	cfg.Raw.Section("uploadpack").SetOption("allowReachableSHA1InWant", "true")
+	require.NoError(t, repo.SetConfig(cfg))
+}
+
+// TestClonePinnedCommit reads a file at a commit that is no longer the tip of
+// its branch, from a remote that serves commits by hash and from one that
+// does not. Both must return the file as it was at that commit: the first by
+// fetching the commit alone, the second by falling back to a clone.
+func TestClonePinnedCommit(t *testing.T) {
+	t.Parallel()
+	noAuth := WithSystemCredentials(false)
+
+	for _, tc := range []struct {
+		name          string
+		servesCommits bool
+	}{
+		{"remote serves commits by hash", true},
+		{"remote refuses commits by hash", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repoDir, pinned := initTestRepoWithFiles(t, map[string]string{"hello.txt": "first"})
+			tip := addCommit(t, repoDir, "hello.txt", "second")
+			if tc.servesCommits {
+				allowFetchingCommits(t, repoDir)
+			}
+
+			// The commit is fetched on its own only when the remote allows it,
+			// and then without the history around it.
+			components, err := Locator(fileLocator(repoDir, pinned, "")).Parse()
+			require.NoError(t, err)
+			repo, err := fetchCommit(t.Context(), memfs.New(), components.RepoURL(), nil, pinned)
+			require.NoError(t, err)
+			if tc.servesCommits {
+				require.NotNil(t, repo)
+				_, err = repo.CommitObject(plumbing.NewHash(pinned))
+				require.NoError(t, err)
+				_, err = repo.CommitObject(plumbing.NewHash(tip))
+				require.ErrorIs(t, err, plumbing.ErrObjectNotFound)
+			} else {
+				require.Nil(t, repo)
+			}
+
+			// Either way the locator reads the file at the pinned commit.
+			var buf bytes.Buffer
+			require.NoError(t, CopyFile(fileLocator(repoDir, pinned, "hello.txt"), &buf, noAuth))
+			require.Equal(t, "first", buf.String())
+
+			buf.Reset()
+			require.NoError(t, CopyFile(fileLocator(repoDir, tip, "hello.txt"), &buf, noAuth))
+			require.Equal(t, "second", buf.String())
+
+			// A clone path on disk receives the files of the pinned commit.
+			dir := t.TempDir()
+			_, err = CloneRepository(fileLocator(repoDir, pinned, ""), noAuth, WithClonePath(dir))
+			require.NoError(t, err)
+			data, err := os.ReadFile(filepath.Join(dir, "hello.txt"))
+			require.NoError(t, err)
+			require.Equal(t, "first", string(data))
+		})
+	}
+
+	t.Run("unknown commit", func(t *testing.T) {
+		t.Parallel()
+		repoDir, _ := initTestRepoWithFiles(t, map[string]string{"hello.txt": "first"})
+		allowFetchingCommits(t, repoDir)
+		_, err := CloneRepository(
+			fileLocator(repoDir, "0123456789abcdef0123456789abcdef01234567", "hello.txt"), noAuth,
+		)
+		require.Error(t, err)
+	})
+}
+
+// TestClonePinnedCommitOffDefaultBranch pins a commit that only a side branch
+// leads to. Cloning the default branch never brings that commit in, so
+// reading it proves CloneRepository fetched the commit on its own; a remote
+// that refuses to serve commits by hash leaves only the clone, which fails.
+func TestClonePinnedCommitOffDefaultBranch(t *testing.T) {
+	t.Parallel()
+	noAuth := WithSystemCredentials(false)
+
+	for _, tc := range []struct {
+		name          string
+		servesCommits bool
+	}{
+		{"remote serves commits by hash", true},
+		{"remote refuses commits by hash", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repoDir, _ := initTestRepoWithFiles(t, map[string]string{"hello.txt": "hello"})
+			addBranch(t, repoDir, "feature", "feature.txt", "on feature")
+			if tc.servesCommits {
+				allowFetchingCommits(t, repoDir)
+			}
+
+			repo, err := git.PlainOpen(repoDir)
+			require.NoError(t, err)
+			ref, err := repo.Reference(plumbing.NewBranchReferenceName("feature"), true)
+			require.NoError(t, err)
+			locator := fileLocator(repoDir, ref.Hash().String(), "feature.txt")
+
+			var buf bytes.Buffer
+			err = CopyFile(locator, &buf, noAuth)
+			if !tc.servesCommits {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, "on feature", buf.String())
+
+			buf.Reset()
+			require.NoError(t, CopyFileGroup([]string{locator}, []io.Writer{&buf}, noAuth))
+			require.Equal(t, "on feature", buf.String())
+		})
+	}
 }

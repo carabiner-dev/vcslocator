@@ -6,6 +6,7 @@
 package vcslocator
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -310,7 +311,17 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 		}); err != nil {
 			return nil, fmt.Errorf("fetching ref %q: %w", components.RefString, refError(err))
 		}
-	} else {
+	} else if sha1Regex.MatchString(components.Commit) {
+		// A locator pinned to a full commit hash needs that commit and
+		// nothing else, so fetch it alone. A nil repo means the remote
+		// would not serve it and we clone below.
+		repo, err = fetchCommit(opts.context(), fsobj, repourl, auth, components.Commit)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if repo == nil {
 		// Make a clone of the repo to memory
 		repo, err = git.CloneContext(opts.context(), memory.NewStorage(), fsobj, &git.CloneOptions{
 			URL:  repourl,
@@ -362,6 +373,53 @@ func CloneRepository[T ~string](locator T, funcs ...fnOpt) (fs.FS, error) {
 	}
 
 	return iofs.New(fsobj), nil
+}
+
+// pinnedCommitRef is the local reference a commit fetched on its own is
+// stored under. It keeps the commit reachable in the repository; nothing
+// reads it back.
+const pinnedCommitRef = "refs/vcslocator/pinned"
+
+// fetchCommit fetches a single commit, without its history, into a new
+// repository whose worktree is fsobj. The clone it replaces transfers the
+// whole history of the default branch only to check the commit out of it.
+//
+// Serving a commit by its hash is up to the remote: git servers refuse it
+// unless configured to allow it, and a commit no reference leads to may be
+// refused even then. When the remote will not serve the commit fetchCommit
+// returns a nil repository and no error, and the caller falls back to
+// cloning. Nothing has been written to fsobj at that point. An error is
+// only returned when the context is done, as cloning would fail too.
+func fetchCommit(
+	ctx context.Context, fsobj billy.Filesystem, repourl string, auth transport.AuthMethod, commit string,
+) (*git.Repository, error) {
+	repo, err := git.Init(memory.NewStorage(), fsobj)
+	if err != nil {
+		return nil, fmt.Errorf("initializing repo: %w", err)
+	}
+
+	if _, err = repo.CreateRemote(&config.RemoteConfig{
+		Name: "origin",
+		URLs: []string{repourl},
+	}); err != nil {
+		return nil, fmt.Errorf("creating remote: %w", err)
+	}
+
+	if err = repo.FetchContext(ctx, &git.FetchOptions{
+		Auth:  auth,
+		Depth: 1,
+		Tags:  git.NoTags,
+		RefSpecs: []config.RefSpec{
+			config.RefSpec(fmt.Sprintf("%s:%s", commit, pinnedCommitRef)),
+		},
+	}); err != nil {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("fetching commit %s: %w", commit, err)
+		}
+		return nil, nil //nolint:nilnil // no repository and no error means fall back to cloning
+	}
+
+	return repo, nil
 }
 
 // ReadFromRepo opens a git repository by walking up from startDir toward the
