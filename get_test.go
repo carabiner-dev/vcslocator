@@ -602,3 +602,48 @@ func TestClonePinnedCommit(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+// TestClonePinnedCommitOffDefaultBranch pins a commit that only a side branch
+// leads to. Cloning the default branch never brings that commit in, so
+// reading it proves CloneRepository fetched the commit on its own; a remote
+// that refuses to serve commits by hash leaves only the clone, which fails.
+func TestClonePinnedCommitOffDefaultBranch(t *testing.T) {
+	t.Parallel()
+	noAuth := WithSystemCredentials(false)
+
+	for _, tc := range []struct {
+		name          string
+		servesCommits bool
+	}{
+		{"remote serves commits by hash", true},
+		{"remote refuses commits by hash", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repoDir, _ := initTestRepoWithFiles(t, map[string]string{"hello.txt": "hello"})
+			addBranch(t, repoDir, "feature", "feature.txt", "on feature")
+			if tc.servesCommits {
+				allowFetchingCommits(t, repoDir)
+			}
+
+			repo, err := git.PlainOpen(repoDir)
+			require.NoError(t, err)
+			ref, err := repo.Reference(plumbing.NewBranchReferenceName("feature"), true)
+			require.NoError(t, err)
+			locator := fileLocator(repoDir, ref.Hash().String(), "feature.txt")
+
+			var buf bytes.Buffer
+			err = CopyFile(locator, &buf, noAuth)
+			if !tc.servesCommits {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, "on feature", buf.String())
+
+			buf.Reset()
+			require.NoError(t, CopyFileGroup([]string{locator}, []io.Writer{&buf}, noAuth))
+			require.Equal(t, "on feature", buf.String())
+		})
+	}
+}
